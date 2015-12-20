@@ -9,12 +9,16 @@
 
 (def project-tree (atom {:root 0
                          0 {:name "Test project"
-                            :children [1]}
-                         1 {:name "First document"}}))
+                            :children [1 2]}
+                         1 {:name "First document"}
+                         2 {:name "Second document"}}))
 
 (def document-contents (atom {1 {:text "Initial content"
                                  :notes "Initial notes"
-                                 :synopsis "Initial synopsis"}}))
+                                 :synopsis "Initial synopsis"}
+                              2 {:text "Content 2"
+                                 :notes "Notes 2"
+                                 :synopsis "Syn 2"}}))
 
 (def selected-document (atom 1))
 
@@ -22,13 +26,10 @@
                                 
 (defn edit-field
   [kind]
-  [:div {:on-change #(swap! document-contents assoc-in [@selected-document kind] (-> % .-target .-value))
-         :contentEditable "true"}
-   (kind (@document-contents @selected-document))])
+  [:textarea {:on-change #(swap! document-contents assoc-in [@selected-document kind] (-> % .-target .-value)) 
+              :value (kind (@document-contents @selected-document))}])
 
-(defn main-document
-  []
-  ; document title
+(defn main-document []
   [:div
    [:input {:type "text"
             :value (:name (@project-tree @selected-document))
@@ -37,49 +38,21 @@
    [edit-field :notes]
    [edit-field :synopsis]])
   
-(def Tree (r/adapt-react-class js/Tree))
+(defn project-item
+  [id]
+  ^{:key id} [(if (= @selected-document id) :li.selected :li)
+              {:on-click #(reset! selected-document id)}
+              (:name (@project-tree id))])
 
-(defn to-js-tree
-  ([tree] (to-js-tree tree (:root tree)))
-  ([tree id]
-   (let [{:keys [children name collapsed]} (tree id)]
-     (if children
-       #js{:module name
-           :children (map (partial to-js-tree tree) children)
-           :collapsed collapsed
-           :id id}
-       #js{:module name
-           :leaf true
-           :id id}))))
+(defn simplified-project-view []
+  [:ul
+   (for [id (:children (@project-tree (:root @project-tree)))]
+     [project-item id])])
 
-(defn from-js-tree
-  [{:keys [id leaf children collapsed module]}]
-  (if leaf
-    {id {:name module}}
-    (conj (apply merge (map from-js-tree children))
-          {id {:name module
-               :children (map :id children)
-               :collapsed collapsed}
-           :root id})))
-          
-(defn render-node
-  [node]
-  (let [id (.-id node)]
-    (r/as-element [(if (= id @selected-document) :span.node.is-active :span.node)
-                   {:on-click #(reset! selected-document id)}
-                   (.-module node)])))
-
-(defn rendered-tree
-  []
-  [Tree {:padding-left 20
-         :tree (to-js-tree @project-tree)
-         :on-change #(reset! @project-tree (from-js-tree (js->clj %)))
-         :render-node render-node}])
-   
 (defn home-page []
   [:div [:h2 "Welcome to scribe"]
    [:div [:a {:href "/about"} "go to about page"]]
-   [rendered-tree]
+   [simplified-project-view]
    [main-document]])
 
 (defn current-page []
