@@ -18,9 +18,10 @@
 
 (def project-tree (atom {:root 0
                          0 {:name "Test project"
-                            :children [1 2]}
+                            :children [1 2 3]}
                          1 {:name "First document"}
-                         2 {:name "Second document"}}))
+                         2 {:name "Second document"}
+                         3 {:name "Unfetched document"}}))
 
 (def document-contents (atom {1 {:text "Initial content"
                                  :notes "Initial notes"
@@ -63,10 +64,12 @@
         (when (not= last-tree now-tree)
           (println "Treediff: " (diff last-tree now-tree))
           (<! (http/post "/update-tree" {:json-params (diff last-tree now-tree)}))
+          ; TODO: check success, think of a failure mode
           (swap! last-sent assoc :tree now-tree))
         (when (not= last-documents now-documents)
           (println "Documentsdiff: " (diff last-documents now-documents))
           (<! (http/post "/update-documents" {:json-params (diff last-documents now-documents)}))
+          ; TODO: check success, think of a failure mode
           (swap! last-sent assoc :documents now-documents))
         (reset! sending false)
         (reset! possibly-need-update false)))))
@@ -81,6 +84,13 @@
 
 (watch-atom document-contents)
 (watch-atom project-tree)
+
+(add-watch selected-document :possibly-fetch
+  (fn [_ _ _ id]
+    (when-not (@document-contents id)
+      (go (let [response (<! (http/get "/document" {:query-params {"id" id}}))])))))
+            ; TODO: check success
+            ; TODO: store retrieved result
 
 (defn edit-field
   [kind]
