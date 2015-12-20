@@ -20,8 +20,9 @@
                  [secretary "1.2.3"]
                  [venantius/accountant "0.1.5"
                   :exclusions [org.clojure/tools.reader]]
-                 
-                 ]
+                 [cljs-http "0.1.39"]
+                 [org.clojure/core.async "0.2.374"]]
+
 
   :plugins [[lein-environ "1.0.1"]
             [lein-cljsbuild "1.1.1"]
@@ -73,8 +74,7 @@
                                    :exclusions [org.clojure/clojure org.clojure/tools.reader]]
                                   [org.clojure/tools.nrepl "0.2.12"]
                                   [com.cemerick/piggieback "0.2.1"]
-                                                                    [pjstadig/humane-test-output "0.7.0"]
-                                  ]
+                                  [pjstadig/humane-test-output "0.7.0"]]
 
                    :source-paths ["env/dev/clj"]
                    :plugins [[lein-figwheel "0.5.0-2"
@@ -87,8 +87,7 @@
                                            org.clojure/clojurescript
                                            org.clojure/core.async
                                            org.clojure/tools.analyzer.jvm]]
-                             [org.clojure/clojurescript "1.7.170"]
-                             ]
+                             [org.clojure/clojurescript "1.7.170"]]
 
                    :injections [(require 'pjstadig.humane-test-output)
                                 (pjstadig.humane-test-output/activate!)]
@@ -96,8 +95,8 @@
                    :figwheel {:http-server-root "public"
                               :server-port 3449
                               :nrepl-port 7002
-                              :nrepl-middleware ["cemerick.piggieback/wrap-cljs-repl"
-                                                 ]
+                              :nrepl-middleware ["cemerick.piggieback/wrap-cljs-repl"]
+
                               :css-dirs ["resources/public/css"]
                               :ring-handler scribe.handler/app}
 
@@ -105,12 +104,7 @@
 
                    :cljsbuild {:builds {:app {:source-paths ["env/dev/cljs"]
                                               :compiler {:main "scribe.dev"
-                                                         :source-map true}}
-
-
-                                        }
-
-                               }}
+                                                         :source-map true}}}}}
 
              :uberjar {:hooks [minify-assets.plugin/hooks]
                        :prep-tasks ["compile" ["cljsbuild" "once"]]
