@@ -13,8 +13,12 @@
 ;; -------------------------
 ;; Application
 
-;(def update-delay 300000)
-(def update-delay 1000)
+(defn project-url
+  [relpath]
+  (str (.-pathname js/location) relpath))
+
+(def update-delay 300000)
+(def update-trigger-delay 150000)
 
 (def project-tree (atom {:root 0
                          0 {:name "Test project"
@@ -34,6 +38,7 @@
 
 (def possibly-need-update (atom false))
 (def sending (atom false))
+(def recently-triggered-possible-update (atom false))
 (def last-sent (atom {:tree {} :documents {}}))
 
 (defn diff
@@ -61,25 +66,30 @@
           now-documents @document-contents]
       (reset! sending true)
       (go
-        (when (not= last-tree now-tree)
-          (println "Treediff: " (diff last-tree now-tree))
-          (<! (http/post "/update-tree" {:json-params (diff last-tree now-tree)}))
-          ; TODO: check success, think of a failure mode
-          (swap! last-sent assoc :tree now-tree))
-        (when (not= last-documents now-documents)
-          (println "Documentsdiff: " (diff last-documents now-documents))
-          (<! (http/post "/update-documents" {:json-params (diff last-documents now-documents)}))
-          ; TODO: check success, think of a failure mode
-          (swap! last-sent assoc :documents now-documents))
-        (reset! sending false)
-        (reset! possibly-need-update false)))))
+        (try
+          (when (not= last-tree now-tree)
+            (let [resp (<! (http/post (project-url "/tree") {:json-params (diff last-tree now-tree)}))]
+              (if (:success resp)
+                (swap! last-sent assoc :tree now-tree)
+                (throw "Failed to push update of tree"))))
+          (when (not= last-documents now-documents)
+            (let [resp (<! (http/post (project-url "/documents") {:json-params (diff last-documents now-documents)}))]
+              (if (:success resp)
+                (swap! last-sent assoc :documents now-documents)
+                (throw "Failed to push update of content"))))
+          (reset! possibly-need-update false)
+          (catch :default e
+            (println "Failure in pushing updates: " e))
+          (finally
+            (reset! sending false)))))))
 
 (defn watch-atom
   [atom]
   (let [f (fn [_ _ _ _]
-            (when-not @possibly-need-update
-              (reset! possibly-need-update true)
-              (.setTimeout js/window possibly-push-updates update-delay)))]
+            (when-not @recently-triggered-possible-update
+              (reset! recently-triggered-possible-update true)
+              (.setTimeout js/window possibly-push-updates update-delay)
+              (.setTimeout js/window #(reset! recently-triggered-possible-update false) update-trigger-delay)))]
     (add-watch atom :possibly-update f)))
 
 (watch-atom document-contents)
@@ -88,9 +98,13 @@
 (add-watch selected-document :possibly-fetch
   (fn [_ _ _ id]
     (when-not (@document-contents id)
-      (go (let [response (<! (http/get "/document" {:query-params {"id" id}}))])))))
-            ; TODO: check success
-            ; TODO: store retrieved result
+      (go (let [response (<! (http/get (project-url "/document") {:query-params {"id" id}}))]
+            (if (:success response)
+              (do
+                (println (:body response)))
+                ; TODO: store retrieved result
+                ; TODO: store also in last sent, since this is already up to date with server
+              (println "Failed to fetch document with id " id)))))))
 
 (defn edit-field
   [kind]
