@@ -5,12 +5,22 @@ GET /<proj-id>/document?id=<id>
   "notes": <notes>,
 }
 
+GET /<proj-id>/tree
+{
+  "root": <id>,
+  <id>: {
+    "name": <string>,
+    "collapsed": <bool>,  // not present on leaves
+    "children": [<id>],   // not present on leaves
+  },
+}
+
 POST /<proj-id>/tree
 {
   "root": <id>,
   <id>: {
     "name": <string>,
-    "collapsed": <bool>,  // not present on folders
+    "collapsed": <bool>,  // not present on leaves
     "children": [<id>],   // not present on leaves
   },
   <id>: null,             // means delete this entry
