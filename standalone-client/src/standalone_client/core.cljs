@@ -14,19 +14,9 @@
 (def update-delay 300000)
 (def update-trigger-delay 150000)
 
-(def project-tree (atom {:root 0
-                         0 {:name "Test project"
-                            :children [1 2 3]}
-                         1 {:name "First document"}
-                         2 {:name "Second document"}
-                         3 {:name "Unfetched document"}}))
+(def project-tree (atom {}))
 
-(def document-contents (atom {1 {:text "Initial content"
-                                 :notes "Initial notes"
-                                 :synopsis "Initial synopsis"}
-                              2 {:text "Content 2"
-                                 :notes "Notes 2"
-                                 :synopsis "Syn 2"}}))
+(def document-contents (atom {}))
 
 (def selected-document (atom 1))
 
@@ -65,14 +55,14 @@
             (let [resp (<! (http/post (project-url "/tree") {:json-params (diff last-tree now-tree)}))]
               (if (:success resp)
                 (swap! last-sent assoc :tree now-tree)
-                (throw "Failed to push update of tree"))))
+                (throw (js/Error. "Failed to push update of tree")))))
           (when (not= last-documents now-documents)
             (let [resp (<! (http/post (project-url "/documents") {:json-params (diff last-documents now-documents)}))]
               (if (:success resp)
                 (swap! last-sent assoc :documents now-documents)
-                (throw "Failed to push update of content"))))
+                (throw (js/Error. "Failed to push update of content")))))
           (reset! possibly-need-update false)
-          (catch :default e
+          (catch js/Error e
             (println "Failure in pushing updates: " e))
           (finally
             (reset! sending false)))))))
@@ -91,19 +81,36 @@
 
 (add-watch selected-document :possibly-fetch
   (fn [_ _ _ id]
-    (when-not (@document-contents id)
+    (when (and (not (@document-contents id)) (not (:children (@project-tree @selected-document))))
       (go (let [response (<! (http/get (project-url "/document") {:query-params {"id" id}}))]
             (if (:success response)
               (do
-                (println (:body response)))
-                ; TODO: store retrieved result
-                ; TODO: store also in last sent, since this is already up to date with server
+                (let [d (into {}
+                              (map (fn [[k v]] [(keyword k) v]))
+                              (:body response))]
+                  (swap! document-contents assoc id d)
+                  (swap! last-sent assoc-in [:contents id] d)))
               (println "Failed to fetch document with id " id)))))))
+
+(defn create-file
+  []
+  (go (let [parent (:root @project-tree)
+            response (<! (http/post (project-url "/document") {:query-params {"parent" parent}}))]
+        (if (:success response)
+          (do
+            (let [id ((:body response) "id")]
+              (swap! project-tree assoc id {:name "New file"})
+              (swap! project-tree update-in [parent :children] conj id)
+              (swap! document-contents assoc id {:text ""
+                                                 :notes ""
+                                                 :synopsis ""})))
+          (println "Failed to create file")))))
 
 (defn edit-field
   [kind]
   [:textarea {:on-change #(swap! document-contents assoc-in [@selected-document kind] (-> % .-target .-value)) 
-              :value (kind (@document-contents @selected-document))}])
+              :value (kind (@document-contents @selected-document))
+              :disabled (not (@document-contents @selected-document))}])
 
 (defn main-document []
   [:div
@@ -121,13 +128,31 @@
               (:name (@project-tree id))])
 
 (defn simplified-project-view []
-  [:ul
-   (for [id (:children (@project-tree (:root @project-tree)))]
-     ^{:key id} [project-item id])])
+  [:div
+   [:ul
+    (for [id (:children (@project-tree (:root @project-tree)))]
+      ^{:key id} [project-item id])]
+   [:input {:type "button"
+            :on-click create-file
+            :value "New File"}]])
 
-(defn home-page []
+(defn main-page []
   [:div [:h2 "Welcome to scribe"]
    [simplified-project-view]
    [main-document]])
+
+(defn convert-js-tree
+  [orig]
+  (into {}
+        (map (fn [[k v :as pair]] (if (= k :root)
+                                    pair
+                                    [(js/parseInt (name k)) v])))
+        (js->clj js/StartingTree :keywordize-keys true)))
+
+(reset! project-tree (convert-js-tree js/StartingTree))
+(reset! selected-document (:root @project-tree))
+(println "Starting tree: " @project-tree)
+(println "Selected: " @selected-document)
+(r/render-component [main-page] (js/document.getElementById "app"))
 
 ;
