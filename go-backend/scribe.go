@@ -208,6 +208,12 @@ func postHandler(matches []string, w http.ResponseWriter, r *http.Request) bool 
 
 	case "document":
 		return createDocument(matches[1], w, r)
+
+	case "tree":
+		return updateTree(matches[1], w, r)
+
+	case "documents":
+		return updateDocuments(matches[1], w, r)
 	}
 
 	return false;
@@ -357,5 +363,182 @@ func createDocument(projectId string, w http.ResponseWriter, r *http.Request) bo
 		log.Println("Could not make json out of id")
 	}
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	return true
+}
+
+func updateTree(projectId string, w http.ResponseWriter, r *http.Request) bool {
+	ctx := appengine.NewContext(r)
+	u := user.Current(ctx)
+	if u == nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintf(w, "You must be logged in to create a document.")
+		return true
+	}
+
+	var projTop ProjectTop
+	userKey := datastore.NewKey(ctx, "user", u.ID, 0, nil)
+	if err := datastore.Get(ctx, datastore.NewKey(ctx, "projectTop", projectId, 0, userKey), &projTop); err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintf(w, `There is no project with this ID`)
+		log.Println("Could not fetch project", err)
+		return true
+	}
+
+	var snapshot Snapshot
+	snapshotKey := datastore.NewKey(ctx, "snapshot", "", projTop.Snapshots[len(projTop.Snapshots)-1], userKey)
+	if err := datastore.Get(ctx, snapshotKey, &snapshot); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, `Could not load the snapshot`)
+		log.Println("Error loading snapshot", err)
+		return true
+	}
+
+	var treeToUpdate map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&treeToUpdate); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, `Could not decode the request`)
+		return true
+	}
+	log.Println("tree to update with:", treeToUpdate)
+
+	err := datastore.RunInTransaction(ctx, func(ctx appengine.Context) error {
+		for k, node := range treeToUpdate {
+			if k == "root" {
+				snapshot.Top = int64(node.(float64))
+				continue
+			}
+
+			id, err := strconv.ParseInt(k, 10, 64)
+			if err != nil {
+				return err
+			}
+			nodeKey := datastore.NewKey(ctx, "node", "", id, snapshotKey)
+			if node == nil {
+				// delete node, assume the rest of the tree is well-formed
+				if err := datastore.Delete(ctx, nodeKey); err != nil {
+					return err
+				}
+				for i, node := range snapshot.Nodes {
+					if node == id {
+						snapshot.Nodes = append(snapshot.Nodes[:i], snapshot.Nodes[i+1:]...)
+						break
+					}
+				}
+				continue
+			}
+
+			// update a node, so get it, then change it, then put it
+			var nodeToUpdate Node
+			if err := datastore.Get(ctx, nodeKey, &nodeToUpdate); err != nil {
+				return err
+			}
+			for k, v := range node.(map[string]interface{}) {
+				switch k {
+				case "name":
+					nodeToUpdate.Name = v.(string)
+				case "collapsed":
+					nodeToUpdate.Collapsed = v.(bool)
+				case "children":
+					tempList := make([]int64, 0, len(v.([]interface{})))
+					for _, v := range v.([]interface{}) {
+						tempList = append(tempList, int64(v.(float64)))
+					}
+					nodeToUpdate.Children = tempList
+				default:
+					return errors.New("Unknown node property")
+				}
+			}
+			if _, err := datastore.Put(ctx, nodeKey, &nodeToUpdate); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}, nil)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "Could not update the tree")
+		log.Println("Error updating tree", err)
+		return true
+	}
+
+	return true
+}
+
+func updateDocuments(projectId string, w http.ResponseWriter, r *http.Request) bool {
+	ctx := appengine.NewContext(r)
+	u := user.Current(ctx)
+	if u == nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprintf(w, "You must be logged in to update documents.")
+		return true
+	}
+
+	var projTop ProjectTop
+	userKey := datastore.NewKey(ctx, "user", u.ID, 0, nil)
+	if err := datastore.Get(ctx, datastore.NewKey(ctx, "projectTop", projectId, 0, userKey), &projTop); err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintf(w, `There is no project with this ID`)
+		log.Println("Could not fetch project", err)
+		return true
+	}
+
+	var snapshot Snapshot
+	snapshotKey := datastore.NewKey(ctx, "snapshot", "", projTop.Snapshots[len(projTop.Snapshots)-1], userKey)
+	if err := datastore.Get(ctx, snapshotKey, &snapshot); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, `Could not load the snapshot`)
+		log.Println("Error loading snapshot", err)
+		return true
+	}
+
+	var treeToUpdate map[string]map[string]string
+	if err := json.NewDecoder(r.Body).Decode(&treeToUpdate); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, `Could not decode the request`)
+		return true
+	}
+
+	err := datastore.RunInTransaction(ctx, func(ctx appengine.Context) error {
+		for stringId, node := range treeToUpdate {
+			id, err := strconv.ParseInt(stringId, 10, 64)
+			if err != nil {
+				return err
+			}
+
+			nodeKey := datastore.NewKey(ctx, "node", "", id, snapshotKey)
+			var nodeToUpdate Node
+			if err := datastore.Get(ctx, nodeKey, &nodeToUpdate); err != nil {
+				return err
+			}
+
+			for k, v := range node {
+				switch k {
+					case "text":
+						nodeToUpdate.Text = v
+					case "notes":
+						nodeToUpdate.Notes = v
+					case "synopsis":
+						nodeToUpdate.Synopsis = v
+					default:
+						return errors.New("Unknown property")
+				}
+			}
+
+			if _, err := datastore.Put(ctx, nodeKey, &nodeToUpdate); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}, nil)
+
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, "Could not update documents")
+		log.Println("Error updating documents", err)
+		return true
+	}
+
 	return true
 }

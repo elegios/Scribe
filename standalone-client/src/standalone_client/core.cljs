@@ -7,12 +7,18 @@
 
 (enable-console-print!)
 
+(defn json-parse
+  [str]
+  (js->clj (js/JSON.parse str) :keywordize-keys true))
+
 (defn project-url
   [relpath]
   (str (.-pathname js/location) relpath))
 
-(def update-delay 300000)
-(def update-trigger-delay 150000)
+;(def update-delay 300000)
+;(def update-trigger-delay 150000)
+(def update-delay 5000)
+(def update-trigger-delay 5000)
 
 (def project-tree (atom {}))
 
@@ -52,15 +58,19 @@
       (go
         (try
           (when (not= last-tree now-tree)
-            (let [resp (<! (http/post (project-url "/tree") {:json-params (diff last-tree now-tree)}))]
-              (if (:success resp)
-                (swap! last-sent assoc :tree now-tree)
-                (throw (js/Error. "Failed to push update of tree")))))
+            (let [to-send (diff last-tree now-tree)]
+              (when-not (empty? to-send)
+                (let [resp (<! (http/post (project-url "/tree") {:json-params to-send}))]
+                  (if (:success resp)
+                    (swap! last-sent assoc :tree now-tree)
+                    (throw (js/Error. "Failed to push update of tree")))))))
           (when (not= last-documents now-documents)
-            (let [resp (<! (http/post (project-url "/documents") {:json-params (diff last-documents now-documents)}))]
-              (if (:success resp)
-                (swap! last-sent assoc :documents now-documents)
-                (throw (js/Error. "Failed to push update of content")))))
+            (let [to-send (diff last-documents now-documents)]
+              (when-not (empty? to-send)
+                (let [resp (<! (http/post (project-url "/documents") {:json-params to-send}))]
+                  (if (:success resp)
+                    (swap! last-sent assoc :documents now-documents)
+                    (throw (js/Error. "Failed to push update of content")))))))
           (reset! possibly-need-update false)
           (catch js/Error e
             (println "Failure in pushing updates: " e))
@@ -87,9 +97,9 @@
               (do
                 (let [d (into {}
                               (map (fn [[k v]] [(keyword k) v]))
-                              (:body response))]
+                              (json-parse (:body response)))]
                   (swap! document-contents assoc id d)
-                  (swap! last-sent assoc-in [:contents id] d)))
+                  (swap! last-sent assoc-in [:documents id] d)))
               (println "Failed to fetch document with id " id)))))))
 
 (defn create-file
@@ -98,7 +108,7 @@
             response (<! (http/post (project-url "/document") {:query-params {"parent" parent}}))]
         (if (:success response)
           (do
-            (let [id ((:body response) "id")]
+            (let [id (:id (json-parse (:body response)))]
               (swap! project-tree assoc id {:name "New file"})
               (swap! project-tree update-in [parent :children] conj id)
               (swap! document-contents assoc id {:text ""
@@ -150,9 +160,8 @@
         (js->clj js/StartingTree :keywordize-keys true)))
 
 (reset! project-tree (convert-js-tree js/StartingTree))
+(swap! last-sent assoc :tree @project-tree)
 (reset! selected-document (:root @project-tree))
-(println "Starting tree: " @project-tree)
-(println "Selected: " @selected-document)
 (r/render-component [main-page] (js/document.getElementById "app"))
 
 ;
