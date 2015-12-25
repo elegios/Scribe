@@ -111,19 +111,21 @@
                        (map (fn [[k]] k))))
        first))
 
-(defn create-file
-  []
+(defn create-document
+  [kind]
   (go (let [parent (:root @project-tree)
-            response (<! (http/post (project-url "/document") {:query-params {"parent" parent}}))]
+            response (<! (http/post (project-url "/document") {:query-params {"parent" parent "folder" (= kind :folder)}}))]
         (if (:success response)
           (do
-            (let [id (:id (json-parse (:body response)))]
-              (swap! project-tree assoc id {:name "New file"})
+            (let [id (:id (json-parse (:body response)))
+                  tree-entity (case kind
+                                :folder {:name "New folder" :children []}
+                                :file {:name "New file"})]
+              (swap! project-tree assoc id tree-entity)
               (swap! project-tree update-in [parent :children] conj id)
-              (swap! document-contents assoc id {:text ""
-                                                 :notes ""
-                                                 :synopsis ""})))
-          (println "Failed to create file")))))
+              (when (= kind :file)
+                (swap! document-contents assoc id {:text "" :notes "" :synopsis ""}))))
+          (println "Failed to create" (name kind))))))
 
 (defn delete-document
   [document-id]
@@ -164,7 +166,10 @@
       ^{:key id} [project-item id])]
    [:input {:type "button"
             :value "New File"
-            :on-click create-file}]
+            :on-click #(create-document :file)}]
+   [:input {:type "button"
+            :value "New Folder"
+            :on-click #(create-document :folder)}]
    [:input {:type "button"
             :value "Delete"
             :disabled (not (empty? (:children (@project-tree @selected-document))))
