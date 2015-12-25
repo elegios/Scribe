@@ -401,6 +401,8 @@ func updateTree(projectId string, w http.ResponseWriter, r *http.Request) bool {
 	}
 	log.Println("tree to update with:", treeToUpdate)
 
+	updatedSnapshot := false
+
 	err := datastore.RunInTransaction(ctx, func(ctx appengine.Context) error {
 		for k, node := range treeToUpdate {
 			if k == "root" {
@@ -415,12 +417,12 @@ func updateTree(projectId string, w http.ResponseWriter, r *http.Request) bool {
 			nodeKey := datastore.NewKey(ctx, "node", "", id, snapshotKey)
 			if node == nil {
 				// delete node, assume the rest of the tree is well-formed
-				if err := datastore.Delete(ctx, nodeKey); err != nil {
-					return err
-				}
+				// may be deleted earlier, so we don't really care if the deletion fails
+				_ = datastore.Delete(ctx, nodeKey)
 				for i, node := range snapshot.Nodes {
 					if node == id {
 						snapshot.Nodes = append(snapshot.Nodes[:i], snapshot.Nodes[i+1:]...)
+						updatedSnapshot = true
 						break
 					}
 				}
@@ -453,6 +455,10 @@ func updateTree(projectId string, w http.ResponseWriter, r *http.Request) bool {
 			}
 		}
 
+		if updatedSnapshot {
+			_, err := datastore.Put(ctx, snapshotKey, &snapshot)
+			return err
+		}
 		return nil
 	}, nil)
 	if err != nil {
@@ -507,6 +513,12 @@ func updateDocuments(projectId string, w http.ResponseWriter, r *http.Request) b
 			}
 
 			nodeKey := datastore.NewKey(ctx, "node", "", id, snapshotKey)
+			if node == nil {
+				// may already be deleted, so we don't care about the error
+				_ = datastore.Delete(ctx, nodeKey)
+				return nil
+			}
+
 			var nodeToUpdate Node
 			if err := datastore.Get(ctx, nodeKey, &nodeToUpdate); err != nil {
 				return err

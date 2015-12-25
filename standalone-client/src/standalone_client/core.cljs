@@ -102,6 +102,15 @@
                   (swap! last-sent assoc-in [:documents id] d)))
               (println "Failed to fetch document with id " id)))))))
 
+(defn find-parent
+  [node-id]
+  (->> @project-tree
+       (sequence (comp (filter (fn [[k]] (not= k :root)))
+                       (filter (fn [[_ v]]
+                                 (some #(= % node-id) (:children v))))
+                       (map (fn [[k]] k))))
+       first))
+
 (defn create-file
   []
   (go (let [parent (:root @project-tree)
@@ -115,6 +124,17 @@
                                                  :notes ""
                                                  :synopsis ""})))
           (println "Failed to create file")))))
+
+(defn delete-document
+  [document-id]
+  (let [parent (find-parent document-id)]
+    (swap! document-contents dissoc document-id)
+    (swap! project-tree dissoc document-id)
+    (swap! project-tree
+      update-in [parent :children]
+                (partial into [] (filter (partial not= document-id))))
+    (when (= @selected-document document-id)
+      (reset! selected-document parent))))
 
 (defn edit-field
   [kind]
@@ -143,8 +163,12 @@
     (for [id (:children (@project-tree (:root @project-tree)))]
       ^{:key id} [project-item id])]
    [:input {:type "button"
-            :on-click create-file
-            :value "New File"}]])
+            :value "New File"
+            :on-click create-file}]
+   [:input {:type "button"
+            :value "Delete"
+            :disabled (not (empty? (:children (@project-tree @selected-document))))
+            :on-click #(delete-document @selected-document)}]])
 
 (defn main-page []
   [:div [:h2 "Welcome to scribe"]
