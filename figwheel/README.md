@@ -1,18 +1,9 @@
 GET /<proj-id>/document?id=<id>
+return:
 {
   "text": <text>,
   "synopsis": <synopsis>,
   "notes": <notes>,
-}
-
-GET /<proj-id>/tree
-{
-  "root": <id>,
-  <id>: {
-    "name": <string>,
-    "collapsed": <bool>,  // not present on leaves
-    "children": [<id>],   // not present on leaves
-  },
 }
 
 POST /<proj-id>/tree
@@ -27,6 +18,14 @@ POST /<proj-id>/tree
 }
 Only diffed things are present, i.e. never alter things that are not present
 (notably collapsed which is a bool, its absence does not mean "collapsed": false)
+
+POST /<proj-id>/document?parent=<id>&folder=<bool>
+return:
+{
+  "id": <id>,
+}
+Creates a new document with the given node as a parent. "folder" is optional,
+creates a folder if present and equal to true.
 
 POST /<proj-id>/documents
 {
