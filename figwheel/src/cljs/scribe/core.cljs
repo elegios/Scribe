@@ -102,6 +102,7 @@
   (let [f (fn [_ _ _ _]
             (when-not @recently-triggered-possible-update
               (reset! recently-triggered-possible-update true)
+              (reset! possibly-need-update true)
               (.setTimeout js/window possibly-push-updates update-delay)
               (.setTimeout js/window #(reset! recently-triggered-possible-update false) update-trigger-delay)))]
     (add-watch atom :possibly-update f)))
@@ -161,17 +162,27 @@
 (defn edit-field
   [kind]
   [:textarea {:on-change #(swap! document-contents assoc-in [@selected-document kind] (-> % .-target .-value)) 
+              :class kind
               :value (kind (@document-contents @selected-document))
               :disabled (not (@document-contents @selected-document))}])
 
 (defn main-document []
-  [:div
-   [:input {:type "text"
-            :value (:name (@project-tree @selected-document))
-            :on-change #(swap! project-tree assoc-in [@selected-document :name] (-> % .-target .-value))}]
-   [edit-field :text]
+  [:div.main-document
+   [:input.title {:type "text"
+                  :value (:name (@project-tree @selected-document))
+                  :on-change #(swap! project-tree assoc-in [@selected-document :name] (-> % .-target .-value))}]
+   [edit-field :text]])
+
+(defn right-side []
+  [:div.right-side
+   "Notes"
    [edit-field :notes]
-   [edit-field :synopsis]])
+   "Synopsis"
+   [edit-field :synopsis]
+   [:input {:type "button"
+            :value (if @sending "Pushing Changes..." "Push Changes")
+            :disabled (or (not @possibly-need-update) @sending)
+            :on-click possibly-push-updates}]])
   
 #_(defn project-item
    [id]
@@ -293,27 +304,29 @@
      [tree-node @dragging-id true])])
 
 (defn simplified-project-view []
-  [:div
+  [:div.project
    [:div.tree
     [tree-node (:root @project-tree)]
     [dragged]]
-   [:input {:type "button"
-            :value "New File"
-            :on-click #(create-document :file)}]
-   [:input {:type "button"
-            :value "New Folder"
-            :on-click #(create-document :folder)}]
-   [:input {:type "button"
-            :value "Delete"
-            :disabled (not (empty? (:children (@project-tree @selected-document))))
-            :on-click (fn [_]
-                        (delete-document @selected-document)
-                        (reset! selected-document (:root @project-tree)))}]])
+   [:div.project-buttons
+    [:input {:type "button"
+             :value "File"
+             :on-click #(create-document :file)}]
+    [:input {:type "button"
+             :value "Folder"
+             :on-click #(create-document :folder)}]
+    [:input {:type "button"
+             :value "Delete"
+             :disabled (not (empty? (:children (@project-tree @selected-document))))
+             :on-click (fn [_]
+                         (delete-document @selected-document)
+                         (reset! selected-document (:root @project-tree)))}]]])
 
 (defn main-page []
-  [:div [:h2 "Welcome to scribe"]
+  [:div.top-level
    [simplified-project-view]
-   [main-document]])
+   [main-document]
+   [right-side]])
 
 (defn convert-js-tree
   [orig]
@@ -325,7 +338,7 @@
 
 (swap! last-sent assoc :tree @project-tree)
 (reset! selected-document (:root @project-tree))
-(r/render-component [main-page] (js/document.getElementById "app"))
+;(r/render-component [main-page] (js/document.getElementById "app"))
 
 
 (defn current-page []
