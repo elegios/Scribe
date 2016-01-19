@@ -8,5 +8,9 @@ handlers:
     static_files: static/standalone_client.js
     upload: static/standalone_client.js
 
+  - url: /static/site.css
+    static_files: static/site.css
+    upload: static/site.css
+
   - url: /.*
     script: _go_app

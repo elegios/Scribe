@@ -432,6 +432,9 @@ th {
 textarea {
   resize: none;
 }
+textarea:disabled {
+  background-color: #DEDEDE;
+}
 
 #app,.top-level,#app>div {
   width: 100%;
@@ -473,7 +476,7 @@ input:disabled {
 }
 
 .tree {
-  padding-top: 15;
+  border: 1px solid;
   flex: 1;
   overflow: auto;
   white-space: nowrap;

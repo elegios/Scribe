@@ -36,7 +36,47 @@ func handler(w http.ResponseWriter, r *http.Request) {
 				}
 		}
 	}
+
+  if r.Method == "GET" && r.URL.Path == "/" {
+    rootHandler(w, r);
+    return
+  }
+
 	http.NotFound(w, r);
+}
+
+func rootHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-type", "text/html; charset=utf-8")
+	ctx := appengine.NewContext(r)
+	u := user.Current(ctx)
+	if u == nil {
+		url, _ := user.LoginURL(ctx, "/")
+		fmt.Fprintf(w, `You need to be logged in to view this page. <a href="%s">Sign in or register</a>`, url)
+		return
+	}
+
+	userKey := datastore.NewKey(ctx, "user", u.ID, 0, nil)
+	q := datastore.NewQuery("projectTop").Ancestor(userKey).KeysOnly()
+
+	fmt.Fprintf(w, `<ul>`)
+	for t := q.Run(ctx); ; {
+		key, err := t.Next(nil)
+		if err == datastore.Done {
+			break
+		}
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, `</ul>Got an error retrieving projects`)
+			log.Println("Error retrieving projects", err)
+			return
+		}
+
+		fmt.Fprintf(w, `<li><a href="/%s">%s</a></li>`, key.StringID(), key.StringID())
+	}
+	fmt.Fprintf(w, `</ul>`)
+
+	url, _ := user.LogoutURL(ctx, "/")
+	fmt.Fprintf(w, `<a href="%s">Sign out</a>`, url)
 }
 
 func getHandler(matches []string, w http.ResponseWriter, r *http.Request) bool {
@@ -126,7 +166,7 @@ func projectTop(projectId string, w http.ResponseWriter, r *http.Request) bool {
 	}
 	treeToSend["root"] = snapshot.Top
 
-	fmt.Fprintf(w, `<html><head></head><body>`)
+	fmt.Fprintf(w, `<html><head><link rel="stylesheet" type="text/css" href="static/site.css" /></head><body>`)
 	fmt.Fprintf(w, `<script type="text/javascript">var StartingTree=`)
 	if err := json.NewEncoder(w).Encode(treeToSend); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
