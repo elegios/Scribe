@@ -1,6 +1,17 @@
-(ns scribe.view)
+(ns scribe.view
+  (:require-macros [scribe.util :refer [with-subs]])
+  (:require [re-frame.core :refer [dispatch]]
+            [goog.events :as events]
+            [clojure.string :as str])
+  (:import [goog.events EventType]))
 
 (def indent-width 20)
+
+(defn cx
+  [& args]
+  (->> args
+       (filter identity)
+       (str/join " ")))
 
 (defn drag-fn
   [id]
@@ -24,19 +35,19 @@
                   column (max 0
                               (quot (- x left)
                                     indent-width))]
-              (dispatch [:move-drag x y row column])))])
-    (dispatch [:initialize-drag id x y])
-    (events/listen js/window EventType.MOUSEMOVE move-fn)
-    (events/listenOnce js/window Eventtype.MOUSEUP
-      (fn [_]
-        (events/unlisten js/window EventType.MOUSEMOVE move-fn)
-        (dispatch [:end-drag])))))
+              (dispatch [:move-drag x y row column])))]
+      (dispatch [:initialize-drag id x y])
+      (events/listen js/window EventType.MOUSEMOVE move-fn)
+      (events/listenOnce js/window EventType.MOUSEUP
+        (fn [_]
+          (events/unlisten js/window EventType.MOUSEMOVE move-fn)
+          (dispatch [:end-drag]))))))
 
 (defn tree-node
   [id & ignore-placeholder]
   (with-subs [root-id [:tree :root]
               dragging-id [:dragging :id]
-              selected-id [:selected]
+              selected-id [:selected-id]
               {:keys [name children collapsed]} [:tree id]]
     (let [placeholder? (and (not ignore-placeholder)
                             (= id dragging-id))
@@ -46,7 +57,7 @@
        {:class (cx "tree-node" (when placeholder? "placeholder"))
         :style {:margin-left (if root? 0 indent-width)}}
        [:div.inner
-        {:on-mouse-down (drag-fn id)}
+        (when-not root? {:on-mouse-down (drag-fn id)})
         (when children
           [:span
            {:class (cx "collapse" (if collapsed "caret-right" "caret-down"))
@@ -54,7 +65,7 @@
             :on-click #(dispatch [:toggle-collapsed id])}])
         [:span
          {:class (cx (when selected? "selected"))
-          :on-click #(dispatch [:select id])}
+          :on-click #(dispatch [:select-document id])}
          name]]
        (when-not collapsed
          (for [child-id children]
@@ -63,9 +74,9 @@
 (defn dragged []
   (with-subs [{{:keys [x y]} :pos id :id} [:dragging]]
     [:div.dragged
-     {:style {:left x :right y}}
+     {:style {:left x :top y}}
      (when id
-       [tree-node id true])]))
+       ^{:key id} [tree-node id true])]))
 
 (defn left []
   (with-subs [root-id [:tree :root]
@@ -93,28 +104,28 @@
               selected-id [:selected-id]]
     [:textarea
      {:on-change #(dispatch [:update-content selected-id type (-> % .-target .-value)])
-      :class kind
+      :class type
       :value content
       :disabled (not content)}]))
 
 (defn middle []
-  (with-subs [selected-id [:selected]
-              name [:selected-node :name]])
-  [:div.main-document
-   [:input.title {:type "text"
-                  :value name
-                  :on-change #(dispatch [:update-name selected-id
-                                                      (-> % .-target .-value)])}]
-   [edit-field :text]])
+  (with-subs [selected-id [:selected-id]
+              name [:selected-node :name]]
+    [:div.main-document
+     [:input.title {:type "text"
+                    :value name
+                    :on-change #(dispatch [:update-name selected-id
+                                                        (-> % .-target .-value)])}]
+     [edit-field :text]]))
 
 (defn right []
   (with-subs [possibly-need-update [:network :possibly-need-update]
               sending [:network :sending]]
     [:div.right-side
-     "Notes"
-     [edit-field :notes]
      "Synopsis"
      [edit-field :synopsis]
+     "Notes"
+     [edit-field :notes]
      [:input {:type "button"
               :value (if sending "Saving Changes..." "Save Changes")
               :disabled (or sending (not possibly-need-update))

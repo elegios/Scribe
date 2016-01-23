@@ -1,25 +1,27 @@
 (ns scribe.handler
   (:require-macros [cljs.core.async.macros :refer [go]])
-  (:require [re-frame.core :refer [register-handler dispatch]]
+  (:require [re-frame.core :refer [register-handler dispatch path]]
             [cljs.core.async :refer [<!]]
             [cljs-http.client :as http]
-            [scribe.util :refer :all]))
+            [scribe.js-util :refer [project-url json-parse]]
+            [scribe.util :refer [find-parent item-before insert-after modify-when diff]]))
 
 (def update-delay 5000)
 
 (register-handler :initialize
-  (fn [db [_ tree]]
-    {:current {:tree tree
-               :content {}}
-     :last-sent {:tree tree
-                 :content {}}
-     :selected-document (:root tree)
-     :network {:possibly-need-update false
-               :sending false
-               :timer nil}
-     :dragging {:id nil
-                :start nil
-                :pos nil}}))
+  (fn [db [_ tree & [content]]]
+    (let [content (or content {})]
+      {:current {:tree tree
+                 :content content}
+       :last-sent {:tree tree
+                   :content content}
+       :selected-document (:root tree)
+       :network {:possibly-need-update false
+                 :sending false
+                 :timer nil}
+       :dragging {:id nil
+                  :start nil
+                  :pos nil}})))
 
 ; local events (public)
 ; =====================
@@ -69,63 +71,64 @@
         {tree :tree} :current
         :as db}
        [_ x y row column]]
-    (try
-      ;; This function takes a curr-id and creates a list with one entry for each
-      ;; element in the tree with curr-id at the root. Each element is a list of
-      ;; valid locations for drag'n'drop dropping. If the element is truthy that
-      ;; column is valid, and the element will describe where the drop-point will
-      ;; put the dropped thing. Such a list will never have trailing nils, i.e.
-      ;; if no other column matches, take the last.
-      ;; id -> same parent as id, after id
-      ;; '(id) -> as first child of id
-      (letfn [(trans [curr-id]
-                (let [curr (let [children (:children (tree curr-id))
-                                 filtered-children (remove #(= % id) children)]
-                             (cond
-                               (not children) (list curr-id)
-                               (empty? filtered-children) (list curr-id (list curr-id))
-                               :otherwise (list nil (list curr-id))))
-                      children (sequence (comp (remove #(= % id))
-                                               (mapcat trans))
-                                         (:children (tree curr-id)))
-                      last-index (dec (count children))]
-                  (cons curr
-                        (map-indexed #(conj %2 (when (and (= %1 last-index)
-                                                          (not= curr-id (:root tree)))
-                                                  curr-id))
-                                     children))))]
-        (let [positions    (trans (:root tree))
-              position     (or (nth positions index nil)
-                               (last positions))
-              insert-point (or (some identity (nthrest position column))
-                               (last position))
-              prev-parent  (find-parent tree id)
-              prev-point (if (= id (first (:children (tree prev-parent))))
-                           (list prev-parent)
-                           (item-before (:children (tree prev-parent)) id))]
-          ; sanity check
-          (when (or (nil? insert-point)
-                    (and (not (list? insert-point))
-                         (not (find-parent tree insert-point))))
-             (throw (js/Error. (str "Failure in dragging, invalid insert-point: " insert-point))))
-          (-> db
-              (assoc-in [:dragging :pos] {:x x :y y})
-              (modify-when start
-                update :dragging assoc :id start :start nil)
-              (modify-when (not= prev-point insert-point)
-                update-in [:current :tree]
-                  #(let [removed (update-in % [prev-parent :children]
-                                              (partial into [] (remove (partial = id))))]
-                     (if (list? insert-point)
-                       (update-in removed
-                                  [(first insert-point) :children]
-                                  (partial into [id]))
-                       (update-in removed
-                                  [(find-parent tree insert-point) :children]
-                                  insert-after insert-point id)))))))
-     (catch js/Error e
-       (println e)
-       db))))
+    (let [id (or id start)]
+      (try
+        ;; This function takes a curr-id and creates a list with one entry for each
+        ;; element in the tree with curr-id at the root. Each element is a list of
+        ;; valid locations for drag'n'drop dropping. If the element is truthy that
+        ;; column is valid, and the element will describe where the drop-point will
+        ;; put the dropped thing. Such a list will never have trailing nils, i.e.
+        ;; if no other column matches, take the last.
+        ;; id -> same parent as id, after id
+        ;; '(id) -> as first child of id
+        (letfn [(trans [curr-id]
+                  (let [curr (let [children (:children (tree curr-id))
+                                   filtered-children (remove #(= % id) children)]
+                               (cond
+                                 (not children) (list curr-id)
+                                 (empty? filtered-children) (list curr-id (list curr-id))
+                                 :otherwise (list nil (list curr-id))))
+                        children (sequence (comp (remove #(= % id))
+                                                 (mapcat trans))
+                                           (:children (tree curr-id)))
+                        last-index (dec (count children))]
+                    (cons curr
+                          (map-indexed #(conj %2 (when (and (= %1 last-index)
+                                                            (not= curr-id (:root tree)))
+                                                    curr-id))
+                                       children))))]
+          (let [positions    (trans (:root tree))
+                position     (or (nth positions row nil)
+                                 (last positions))
+                insert-point (or (some identity (nthrest position column))
+                                 (last position))
+                prev-parent (find-parent tree id)
+                prev-point (if (= id (first (:children (tree prev-parent))))
+                             (list prev-parent)
+                             (item-before (:children (tree prev-parent)) id))]
+            ; sanity check
+            (when (or (nil? insert-point)
+                      (and (not (list? insert-point))
+                           (not (find-parent tree insert-point))))
+               (throw (js/Error. (str "Failure in dragging, invalid insert-point: " insert-point))))
+            (-> db
+                (assoc-in [:dragging :pos] {:x x :y y})
+                (modify-when start
+                  update :dragging assoc :id start :start nil)
+                (modify-when (not= prev-point insert-point)
+                  update-in [:current :tree]
+                    #(let [removed (update-in % [prev-parent :children]
+                                                (partial into [] (remove (partial = id))))]
+                       (if (list? insert-point)
+                         (update-in removed
+                                    [(first insert-point) :children]
+                                    (partial into [id]))
+                         (update-in removed
+                                    [(find-parent tree insert-point) :children]
+                                    insert-after insert-point id)))))))
+       (catch js/Error e
+         (println e)
+         db)))))
 
 (register-handler :end-drag
   (path [:dragging])
@@ -139,11 +142,12 @@
 ; triggers a fetch for the currently selected document. Note that it will be replaced
 ; when/if the response comes in, regardless of previous content.
 (register-handler :fetch-selected
-  (fn [{selected :selected-document :as db} _]
-    (go (let [response (<! (http/get (project-url "/document") {:query-params {"id" id}}))]
-          (if (:success response)
-            (dispatch [:document-fetched selected (json-parse (:body response))])
-            (println "Failed to fetch document with id " id))))
+  (fn [{id :selected-document :as db} _]
+    (when id
+      (go (let [response (<! (http/get (project-url "/document") {:query-params {"id" id}}))]
+            (if (:success response)
+              (dispatch [:document-fetched id (json-parse (:body response))])
+              (println "Failed to fetch document with id" id)))))
     db))
 
 ; create a document (:file or :folder) as the last child of parent. If parent
@@ -152,18 +156,18 @@
 (register-handler :create-document
   (fn [{{tree :tree} :current :as db} [_ parent type]]
     (go
-      (let [parent (if (:children (tree parent)
-                         parent
-                         (find-parent tree parent)))
+      (let [parent (if (:children (tree parent))
+                       parent
+                       (find-parent tree parent))
             response (<! (http/post (project-url "/document")
                                     {:query-params {"parent" parent
-                                                    "folder" (= kind :folder)}}))]
+                                                    "folder" (= type :folder)}}))]
         (if (:success response)
           (dispatch [:document-created
                      parent
                      type
                      (:id (json-parse (:body response)))])
-          (println "Failed to create " (name kind)))))
+          (println "Failed to create" (name type)))))
     db))
 
 ; send updates if there are any and we're not currently sending
@@ -196,7 +200,7 @@
                       (throw (js/Error. "Failed to push update of content")))))))
             (dispatch [:send-done true])
             (catch js/Error e
-              (println "Failure in pushing updates: " e)
+              (println "Failure in pushing updates:" e)
               (dispatch [:send-done false]))))
         (update db :network assoc :timer nil
                                   :sending true)))))
@@ -208,7 +212,7 @@
   (path [:network])
   (fn [{:keys [timer] :as network} _]
     (when timer
-      (js/cancelTimeout timer))
+      (js/clearTimeout timer))
     (assoc network :timer (js/setTimeout #(dispatch [:trigger-send]) update-delay)
                    :possibly-need-update true)))
 
@@ -227,10 +231,10 @@
 
 (register-handler :document-created
   (fn [db [_ parent type id]]
-    (let [tree-entity (case kind
+    (let [tree-entity (case type
                         :folder {:name "New folder" :children []}
                         :file {:name "New file"})
-          content-entity (case kind
+          content-entity (case type
                            :folder {:notes "" :synopsis ""}
                            :file {:notes "" :synopsis "" :text ""})]
       (-> db

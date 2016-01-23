@@ -1,18 +1,29 @@
 (ns scribe.core
+  (:require-macros [reagent.ratom :refer [run!]])
   (:require [scribe.view :as view]
             [scribe.handler :as handler]
             [scribe.subscription :as subscription]
-            [scribe.util :refer [convert-js-tree]]
+            [scribe.js-util :refer [convert-js-tree]]
             [reagent.core :as r]
-            [re-frame.core :refer [dispatch dispatch-sync]]))
+            [re-frame.core :refer [dispatch dispatch-sync subscribe]]))
 
-(defn ^:export run
+(enable-console-print!)
+
+(defonce runs
+  (let [cont (subscribe [:content])
+        tree (subscribe [:tree])
+        sele (subscribe [:selected-content])]
+    (run! @cont @tree
+      (dispatch [:poke-network]))
+    (run!
+      (when-not @sele
+        (dispatch [:fetch-selected])))))
+
+(defn ^:export run []
   (if js/StartingContent
     (dispatch-sync [:initialize (convert-js-tree js/StartingTree)
                                 (convert-js-tree js/StartingContent)])
     (dispatch-sync [:initialize (convert-js-tree js/StartingTree)]))
-  (add-watch (subscribe [:content]) :poke #(dispatch [:poke-network]))
-  (add-watch (subscribe [:tree]) :poke #(dispatch [:poke-network]))
-  (add-watch (subscribe [:selected-content]) :fetch #(when-not % (dispatch [:fetch-selected])))
-  (r/render-component [view/main-view]))
+  (dispatch [:trigger-send])
+  (r/render-component [view/main-view] (js/document.getElementById "app")))
 ;
