@@ -6,7 +6,7 @@
             [scribe.js-util :refer [project-url json-parse]]
             [scribe.util :refer [find-parent item-before insert-after modify-when diff]]))
 
-(def update-delay 5000)
+(def update-delay 300000)
 
 (register-handler :initialize
   (fn [db [_ tree & [content]]]
@@ -29,6 +29,7 @@
 (register-handler :update-content
   (path [:current :content])
   (fn [content [_ id type value]]
+    (dispatch [:poke-network])
     (assoc-in content [id type] value)))
 
 (register-handler :update-name
@@ -139,10 +140,10 @@
 ; network events (public)
 ; =======================
 
-; triggers a fetch for the currently selected document. Note that it will be replaced
+; triggers a fetch for the given document. Note that it will be replaced
 ; when/if the response comes in, regardless of previous content.
-(register-handler :fetch-selected
-  (fn [{id :selected-document :as db} _]
+(register-handler :fetch
+  (fn [db [_ id]]
     (when id
       (go (let [response (<! (http/get (project-url "/document") {:query-params {"id" id}}))]
             (if (:success response)

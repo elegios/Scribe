@@ -10,20 +10,17 @@
 (enable-console-print!)
 
 (defonce runs
-  (let [cont (subscribe [:content])
-        tree (subscribe [:tree])
-        sele (subscribe [:selected-content])]
-    (run! @cont @tree
-      (dispatch [:poke-network]))
+  (let [tree (subscribe [:tree])
+        sele-cont (subscribe [:selected-content])
+        sele-id   (subscribe [:selected-id])]
     (run!
-      (when-not @sele
-        (dispatch [:fetch-selected])))))
+      (when-not @sele-cont
+        (dispatch [:fetch @sele-id])))))
 
 (defn ^:export run []
   (if js/StartingContent
     (dispatch-sync [:initialize (convert-js-tree js/StartingTree)
                                 (convert-js-tree js/StartingContent)])
     (dispatch-sync [:initialize (convert-js-tree js/StartingTree)]))
-  (dispatch [:trigger-send])
   (r/render-component [view/main-view] (js/document.getElementById "app")))
 ;
