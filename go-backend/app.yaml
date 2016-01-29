@@ -4,9 +4,9 @@ runtime: go
 api_version: go1
 
 handlers:
-  - url: /static/standalone_client.js
-    static_files: static/standalone_client.js
-    upload: static/standalone_client.js
+  - url: /static/client.js
+    static_files: static/client.js
+    upload: static/client.js
 
   - url: /static/site.css
     static_files: static/site.css

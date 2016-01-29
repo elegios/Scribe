@@ -15,80 +15,17 @@ import (
 )
 
 var (
-	reThing = regexp.MustCompile(`^/([^/]+)(?:/([^/]+))?$`)
+	pathRegex = regexp.MustCompile(`^/([^/]+)(?:/([^/]+))?$`)
 )
 
 func init() {
 	http.HandleFunc("/", handler)
 }
 
-func handler(w http.ResponseWriter, r *http.Request) {
-	matches := reThing.FindStringSubmatch(r.URL.Path)
-	if len(matches) > 0 {
-		switch r.Method {
-			case "GET":
-				if getHandler(matches, w, r) {
-					return
-				}
-			case "POST":
-				if postHandler(matches, w, r) {
-					return
-				}
-		}
-	}
-
-  if r.Method == "GET" && r.URL.Path == "/" {
-    rootHandler(w, r);
-    return
-  }
-
-	http.NotFound(w, r);
-}
-
-func rootHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-type", "text/html; charset=utf-8")
-	ctx := appengine.NewContext(r)
-	u := user.Current(ctx)
-	if u == nil {
-		url, _ := user.LoginURL(ctx, "/")
-		fmt.Fprintf(w, `You need to be logged in to view this page. <a href="%s">Sign in or register</a>`, url)
-		return
-	}
-
-	userKey := datastore.NewKey(ctx, "user", u.ID, 0, nil)
-	q := datastore.NewQuery("projectTop").Ancestor(userKey).KeysOnly()
-
-	fmt.Fprintf(w, `<ul>`)
-	for t := q.Run(ctx); ; {
-		key, err := t.Next(nil)
-		if err == datastore.Done {
-			break
-		}
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprintf(w, `</ul>Got an error retrieving projects`)
-			log.Println("Error retrieving projects", err)
-			return
-		}
-
-		fmt.Fprintf(w, `<li><a href="/%s">%s</a></li>`, key.StringID(), key.StringID())
-	}
-	fmt.Fprintf(w, `</ul>`)
-
-	url, _ := user.LogoutURL(ctx, "/")
-	fmt.Fprintf(w, `<a href="%s">Sign out</a>`, url)
-}
-
-func getHandler(matches []string, w http.ResponseWriter, r *http.Request) bool {
-	switch matches[2] {
-	case "":
-		return projectTop(matches[1], w, r)
-
-	case "document":
-		return getDocument(matches[1], w, r);
-	}
-
-	return false;
+type env struct {
+	w http.ResponseWriter
+	r *http.Request
+	ctx appengine.Context
 }
 
 type ProjectTop struct {
@@ -111,39 +48,135 @@ type Node struct {
 	Synopsis string `datastore:",noindex"`
 }
 
-func projectTop(projectId string, w http.ResponseWriter, r *http.Request) bool {
-	w.Header().Set("Content-type", "text/html; charset=utf-8")
-	ctx := appengine.NewContext(r)
-	u := user.Current(ctx)
+/**
+* Convention: return second value, bool, true iff we should just return
+*             because the request has now been taken care of in its entirety
+*/
+
+func getUser(e env) (*datastore.Key, bool) {
+	u := user.Current(e.ctx)
 	if u == nil {
-		url, _ := user.LoginURL(ctx, fmt.Sprintf("/%s", projectId))
-		fmt.Fprintf(w, `You need to be logged in to view this page. <a href="%s">Sign in or register</a>`, url)
-		return true
+		e.w.Header().Set("Content-type", "text/html; charset=utf-8")
+		e.w.WriteHeader(http.StatusUnauthorized)
+		url, _ := user.LoginURL(e.ctx, "/")
+		fmt.Fprintf(e.w, `You need to be logged in to access this page. <a href="%s">Sign in or register</a>`, url)
+		return nil, true
 	}
+	return datastore.NewKey(e.ctx, "user", u.ID, 0, nil), false
+}
+
+func getLastSnapshot(e env, userKey *datastore.Key, projectId string) (*Snapshot, *datastore.Key, bool) {
 	var projTop ProjectTop
-	userKey := datastore.NewKey(ctx, "user", u.ID, 0, nil)
-	if err := datastore.Get(ctx, datastore.NewKey(ctx, "projectTop", projectId, 0, userKey), &projTop); err != nil {
-		fmt.Fprintf(w, `There is no project with this ID. <form action="/%s" method="post"><button type="submit">Create it</button></form>`, projectId)
-		return true;
+	if err := datastore.Get(e.ctx, datastore.NewKey(e.ctx, "projectTop", projectId, 0, userKey), &projTop); err != nil {
+		e.w.Header().Set("Content-type", "text/html; charset=utf-8")
+		e.w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintf(e.w, `There is no project with this ID. <form action="/%s" method="post"><button type="submit">Create it</button></form>`, projectId)
+		return nil, nil, true
 	}
 
 	var snapshot Snapshot
-	snapshotKey := datastore.NewKey(ctx, "snapshot", "", projTop.Snapshots[len(projTop.Snapshots)-1], userKey)
-	if err := datastore.Get(ctx, snapshotKey, &snapshot); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, `Could not load the snapshot`)
+	snapshotKey := datastore.NewKey(e.ctx, "snapshot", "", projTop.Snapshots[len(projTop.Snapshots)-1], userKey)
+	if err := datastore.Get(e.ctx, snapshotKey, &snapshot); err != nil {
+		e.w.Header().Set("Content-type", "text/html; charset=utf-8")
+		e.w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(e.w, `Could not load the snapshot`)
 		log.Println("Error loading snapshot", err)
-		return true;
+		return nil, nil, true
+	}
+
+	return &snapshot, snapshotKey, false
+}
+
+func handler(w http.ResponseWriter, r *http.Request) {
+	e := env {
+		w: w,
+		r: r,
+		ctx: appengine.NewContext(r),
+	}
+	matches := pathRegex.FindStringSubmatch(r.URL.Path)
+	if len(matches) > 0 {
+		switch r.Method {
+		case "GET":
+			if getHandler(e, matches) {
+				return
+			}
+		case "POST":
+			if postHandler(e, matches) {
+				return
+			}
+		}
+	}
+
+  if r.Method == "GET" && r.URL.Path == "/" {
+    rootHandler(e);
+    return
+  }
+
+	http.NotFound(w, r);
+}
+
+func rootHandler(e env) {
+	userKey, done := getUser(e)
+	if done {
+		return
+	}
+
+	q := datastore.NewQuery("projectTop").Ancestor(userKey).KeysOnly()
+
+	e.w.Header().Set("Content-type", "text/html; charset=utf-8")
+	fmt.Fprintf(e.w, `<ul>`)
+	for t := q.Run(e.ctx); ; {
+		key, err := t.Next(nil)
+		if err == datastore.Done {
+			break
+		}
+		if err != nil {
+			e.w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(e.w, `</ul>Got an error retrieving projects`)
+			log.Println("Error retrieving projects", err)
+			return
+		}
+
+		fmt.Fprintf(e.w, `<li><a href="/%s">%s</a></li>`, key.StringID(), key.StringID())
+	}
+	fmt.Fprintf(e.w, `</ul>`)
+
+	url, _ := user.LogoutURL(e.ctx, "/")
+	fmt.Fprintf(e.w, `<a href="%s">Sign out</a>`, url)
+}
+
+func getHandler(e env, matches []string) bool {
+	switch matches[2] {
+	case "":
+		return projectTop(e, matches[1])
+
+	case "document":
+		return getDocument(e, matches[1])
+	}
+
+	return false
+}
+
+func projectTop(e env, projectId string) bool {
+	e.w.Header().Set("Content-type", "text/html; charset=utf-8")
+	userKey, done := getUser(e)
+	if done {
+		return true
+	}
+
+	snapshot, snapshotKey, done := getLastSnapshot(e, userKey, projectId)
+	if done {
+		return true
 	}
 
 	nodes := make([]Node, len(snapshot.Nodes))
 	nodeKeys := make([]*datastore.Key, 0, len(snapshot.Nodes))
 	for _, k := range snapshot.Nodes {
-		nodeKeys = append(nodeKeys, datastore.NewKey(ctx, "node", "", k, snapshotKey))
+		nodeKeys = append(nodeKeys, datastore.NewKey(e.ctx, "node", "", k, snapshotKey))
 	}
-	if err := datastore.GetMulti(ctx, nodeKeys, nodes); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, `Could not load all nodes in the snapshot`)
+	if err := datastore.GetMulti(e.ctx, nodeKeys, nodes); err != nil {
+		e.w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(e.w, `Could not load all nodes in the snapshot`)
 		log.Println("Error loading nodes in snapshot", err)
 		return true
 	}
@@ -166,118 +199,98 @@ func projectTop(projectId string, w http.ResponseWriter, r *http.Request) bool {
 	}
 	treeToSend["root"] = snapshot.Top
 
-	fmt.Fprintf(w, `<html><head><link rel="stylesheet" type="text/css" href="static/site.css" /></head><body>`)
-	fmt.Fprintf(w, `<script type="text/javascript">var StartingTree=`)
-	if err := json.NewEncoder(w).Encode(treeToSend); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "Could not generate json from the tree")
+	fmt.Fprintf(e.w, `<html><head><link rel="stylesheet" type="text/css" href="static/site.css" /></head><body>`)
+	fmt.Fprintf(e.w, `<script type="text/javascript">var StartingContent=null;var StartingTree=`)
+	if err := json.NewEncoder(e.w).Encode(treeToSend); err != nil {
+		e.w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(e.w, "Could not generate json from the tree")
 		log.Println("Error generating json from tree", err)
 		return true
 	}
-	fmt.Fprintf(w, `</script><div id="app"></div><script type="text/javascript" src="static/standalone_client.js"></script></body></html>`)
+	fmt.Fprintf(e.w, `</script><div id="app"></div><script type="text/javascript" src="static/client.js"></script>`)
+	fmt.Fprintf(e.w, `<script type="text/javascript">window.onload=function(){scribe.core.run()}</script>`)
+	fmt.Fprintf(e.w, `</body></html>`)
 	return true;
 }
 
-func getDocument(projectId string, w http.ResponseWriter, r *http.Request) bool {
-	ctx := appengine.NewContext(r)
-	u := user.Current(ctx)
-	if u == nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintf(w, "You must be logged in to fetch a document.")
+func getDocument(e env, projectId string) bool {
+	userKey, done := getUser(e)
+	if done {
 		return true
 	}
 
-	var projTop ProjectTop
-	userKey := datastore.NewKey(ctx, "user", u.ID, 0, nil)
-	if err := datastore.Get(ctx, datastore.NewKey(ctx, "projectTop", projectId, 0, userKey), &projTop); err != nil {
-		fmt.Fprintf(w, `There is no project with this ID`)
-		log.Println("Could not fetch project", err)
-		return true;
-	}
-
-	var snapshot Snapshot
-	snapshotKey := datastore.NewKey(ctx, "snapshot", "", projTop.Snapshots[len(projTop.Snapshots)-1], userKey)
-	if err := datastore.Get(ctx, snapshotKey, &snapshot); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, `Could not load the snapshot`)
-		log.Println("Error loading snapshot", err)
-		return true;
-	}
-
+	_, snapshotKey, done := getLastSnapshot(e, userKey, projectId) // FIXME: Unnecessary Get of snapshot
 	var node Node
-	id, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
+	id, err := strconv.ParseInt(e.r.FormValue("id"), 10, 64)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "Document ids must be numeric")
+		e.w.Header().Set("Content-type", "text/html; charset=utf-8")
+		e.w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(e.w, "Document ids must be numeric")
 		log.Println("Could not parse int id", err)
+		return true
 	}
-	if err := datastore.Get(ctx, datastore.NewKey(ctx, "node", "", id, snapshotKey), &node); err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		fmt.Fprintf(w, `Could not find the document`)
+	if err := datastore.Get(e.ctx, datastore.NewKey(e.ctx, "node", "", id, snapshotKey), &node); err != nil {
+		e.w.Header().Set("Content-type", "text/html; charset=utf-8")
+		e.w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintf(e.w, `Could not find the document`)
 		log.Println("Error loading node", err)
 		return true
 	}
 
-	if node.Folder {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, `The given ID represents a folder`)
-		return true
-	}
-
-	treeToSend := map[string]interface{}{
-		"text": node.Text,
+	treeToSend := map[string]string {
 		"notes": node.Notes,
 		"synopsis": node.Synopsis,
 	}
-	if err := json.NewEncoder(w).Encode(treeToSend); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, `Could not generate json from document`)
+	if !node.Folder {
+		treeToSend["text"] = node.Text
+	}
+
+	if err := json.NewEncoder(e.w).Encode(treeToSend); err != nil {
+		e.w.Header().Set("Content-type", "text/html; charset=utf-8")
+		e.w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(e.w, `Could not generate json from document`)
 		log.Println("Error generating json from node", err)
 		return true
 	}
 
-	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	return true;
+	e.w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	return true
 }
 
-func postHandler(matches []string, w http.ResponseWriter, r *http.Request) bool {
-	log.Println("Post matches:", matches)
+func postHandler(e env, matches []string) bool {
 	switch matches[2] {
 	case "":
-		return createProject(matches[1], w, r)
+		return createProject(e, matches[1])
 
 	case "document":
-		return createDocument(matches[1], w, r)
+		return createDocument(e, matches[1])
 
 	case "tree":
-		return updateTree(matches[1], w, r)
+		return updateTree(e, matches[1])
 
 	case "documents":
-		return updateDocuments(matches[1], w, r)
+		return updateDocuments(e, matches[1])
 	}
 
-	return false;
+	return false
 }
 
-func createProject(projectId string, w http.ResponseWriter, r *http.Request) bool {
-	ctx := appengine.NewContext(r)
-	u := user.Current(ctx)
-	if u == nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintf(w, "You must be logged in to create a project.")
+func createProject(e env, projectId string) bool {
+	userKey, done := getUser(e)
+	if done {
 		return true
 	}
 
 	var projTop ProjectTop
-	userKey := datastore.NewKey(ctx, "user", u.ID, 0, nil)
-	topKey := datastore.NewKey(ctx, "projectTop", projectId, 0, userKey)
-	if err := datastore.Get(ctx, topKey, &projTop); err == nil {
-		w.WriteHeader(http.StatusConflict)
-		fmt.Fprintf(w, `There is already a project with that id.`)
+	topKey := datastore.NewKey(e.ctx, "projectTop", projectId, 0, userKey)
+	if err := datastore.Get(e.ctx, topKey, &projTop); err == nil {
+		e.w.Header().Set("Content-type", "text/html; charset=utf-8")
+		e.w.WriteHeader(http.StatusConflict)
+		fmt.Fprintf(e.w, `There is already a project with that id.`)
 		return true;
 	}
 
-	err := datastore.RunInTransaction(ctx, func(ctx appengine.Context) error {
+	err := datastore.RunInTransaction(e.ctx, func(ctx appengine.Context) error {
 		snapshot := Snapshot {
 			Previous: 0,
 			Top: 0,
@@ -319,48 +332,33 @@ func createProject(projectId string, w http.ResponseWriter, r *http.Request) boo
 	}, nil)
 
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "Could not create project")
+		e.w.Header().Set("Content-type", "text/html; charset=utf-8")
+		e.w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(e.w, "Could not create project")
 		log.Println("Error creating project:", err)
 		return true
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/%s", projectId), http.StatusSeeOther)
+	http.Redirect(e.w, e.r, fmt.Sprintf("/%s", projectId), http.StatusSeeOther)
 	return true;
 }
 
-func createDocument(projectId string, w http.ResponseWriter, r *http.Request) bool {
-	ctx := appengine.NewContext(r)
-	u := user.Current(ctx)
-	if u == nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintf(w, "You must be logged in to create a document.")
+func createDocument(e env, projectId string) bool {
+	userKey, done := getUser(e)
+	if done {
 		return true
 	}
 
-	var projTop ProjectTop
-	userKey := datastore.NewKey(ctx, "user", u.ID, 0, nil)
-	if err := datastore.Get(ctx, datastore.NewKey(ctx, "projectTop", projectId, 0, userKey), &projTop); err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		fmt.Fprintf(w, `There is no project with this ID`)
-		log.Println("Could not fetch project", err)
-		return true
-	}
-
-	var snapshot Snapshot
-	snapshotKey := datastore.NewKey(ctx, "snapshot", "", projTop.Snapshots[len(projTop.Snapshots)-1], userKey)
-	if err := datastore.Get(ctx, snapshotKey, &snapshot); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, `Could not load the snapshot`)
-		log.Println("Error loading snapshot", err)
+	snapshot, snapshotKey, done := getLastSnapshot(e, userKey, projectId)
+	if done {
 		return true
 	}
 
 	var nodeKey *datastore.Key
 
-	err := datastore.RunInTransaction(ctx, func(ctx appengine.Context) error {
+	err := datastore.RunInTransaction(e.ctx, func(ctx appengine.Context) error {
 		node := Node {
-			Folder: r.FormValue("folder") == "true",
+			Folder: e.r.FormValue("folder") == "true",
 		}
 		var err error
 
@@ -369,7 +367,7 @@ func createDocument(projectId string, w http.ResponseWriter, r *http.Request) bo
 			return err
 		}
 
-		parentId, err := strconv.ParseInt(r.FormValue("parent"), 10, 64)
+		parentId, err := strconv.ParseInt(e.r.FormValue("parent"), 10, 64)
 		if err != nil {
 			return err
 		}
@@ -388,62 +386,51 @@ func createDocument(projectId string, w http.ResponseWriter, r *http.Request) bo
 		}
 
 		snapshot.Nodes = append(snapshot.Nodes, nodeKey.IntID())
-		_, err = datastore.Put(ctx, snapshotKey, &snapshot)
+		_, err = datastore.Put(ctx, snapshotKey, snapshot)
 		return err
 	}, nil)
 
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "Could not create document")
+		e.w.Header().Set("Content-type", "text/html; charset=utf-8")
+		e.w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(e.w, "Could not create document")
+		log.Println("Could not create document.", err)
 		return true
 	}
 
-	if err = json.NewEncoder(w).Encode(map[string]interface{}{"id": nodeKey.IntID()}); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+	if err = json.NewEncoder(e.w).Encode(map[string]int64{"id": nodeKey.IntID()}); err != nil {
+		e.w.Header().Set("Content-type", "text/html; charset=utf-8")
+		e.w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(e.w, "Nigh impossible error")
 		log.Println("Could not make json out of id")
 	}
-	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	e.w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	return true
 }
 
-func updateTree(projectId string, w http.ResponseWriter, r *http.Request) bool {
-	ctx := appengine.NewContext(r)
-	u := user.Current(ctx)
-	if u == nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintf(w, "You must be logged in to create a document.")
+func updateTree(e env, projectId string) bool {
+	userKey, done := getUser(e)
+	if done {
 		return true
 	}
 
-	var projTop ProjectTop
-	userKey := datastore.NewKey(ctx, "user", u.ID, 0, nil)
-	if err := datastore.Get(ctx, datastore.NewKey(ctx, "projectTop", projectId, 0, userKey), &projTop); err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		fmt.Fprintf(w, `There is no project with this ID`)
-		log.Println("Could not fetch project", err)
-		return true
-	}
-
-	var snapshot Snapshot
-	snapshotKey := datastore.NewKey(ctx, "snapshot", "", projTop.Snapshots[len(projTop.Snapshots)-1], userKey)
-	if err := datastore.Get(ctx, snapshotKey, &snapshot); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, `Could not load the snapshot`)
-		log.Println("Error loading snapshot", err)
+	snapshot, snapshotKey, done := getLastSnapshot(e, userKey, projectId)
+	if done {
 		return true
 	}
 
 	var treeToUpdate map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&treeToUpdate); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, `Could not decode the request`)
+	if err := json.NewDecoder(e.r.Body).Decode(&treeToUpdate); err != nil {
+		e.w.Header().Set("Content-type", "text/html; charset=utf-8")
+		e.w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(e.w, `Could not decode the request`)
 		return true
 	}
-	log.Println("tree to update with:", treeToUpdate)
 
-	updatedSnapshot := false
+	err := datastore.RunInTransaction(e.ctx, func(ctx appengine.Context) error {
+		updatedSnapshot := false
 
-	err := datastore.RunInTransaction(ctx, func(ctx appengine.Context) error {
 		for k, node := range treeToUpdate {
 			if k == "root" {
 				snapshot.Top = int64(node.(float64))
@@ -457,6 +444,7 @@ func updateTree(projectId string, w http.ResponseWriter, r *http.Request) bool {
 			nodeKey := datastore.NewKey(ctx, "node", "", id, snapshotKey)
 			if node == nil {
 				// delete node, assume the rest of the tree is well-formed
+				// FIXME: fetch node, check that children is empty, or delete recursively
 				// may be deleted earlier, so we don't really care if the deletion fails
 				_ = datastore.Delete(ctx, nodeKey)
 				for i, node := range snapshot.Nodes {
@@ -496,14 +484,16 @@ func updateTree(projectId string, w http.ResponseWriter, r *http.Request) bool {
 		}
 
 		if updatedSnapshot {
-			_, err := datastore.Put(ctx, snapshotKey, &snapshot)
+			_, err := datastore.Put(ctx, snapshotKey, snapshot)
 			return err
 		}
 		return nil
 	}, nil)
+
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "Could not update the tree")
+		e.w.Header().Set("Content-type", "text/html; charset=utf-8")
+		e.w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(e.w, "Could not update the tree")
 		log.Println("Error updating tree", err)
 		return true
 	}
@@ -511,41 +501,26 @@ func updateTree(projectId string, w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-func updateDocuments(projectId string, w http.ResponseWriter, r *http.Request) bool {
-	ctx := appengine.NewContext(r)
-	u := user.Current(ctx)
-	if u == nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintf(w, "You must be logged in to update documents.")
+func updateDocuments(e env, projectId string) bool {
+	userKey, done := getUser(e)
+	if done {
 		return true
 	}
 
-	var projTop ProjectTop
-	userKey := datastore.NewKey(ctx, "user", u.ID, 0, nil)
-	if err := datastore.Get(ctx, datastore.NewKey(ctx, "projectTop", projectId, 0, userKey), &projTop); err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		fmt.Fprintf(w, `There is no project with this ID`)
-		log.Println("Could not fetch project", err)
-		return true
-	}
-
-	var snapshot Snapshot
-	snapshotKey := datastore.NewKey(ctx, "snapshot", "", projTop.Snapshots[len(projTop.Snapshots)-1], userKey)
-	if err := datastore.Get(ctx, snapshotKey, &snapshot); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, `Could not load the snapshot`)
-		log.Println("Error loading snapshot", err)
+	_, snapshotKey, done := getLastSnapshot(e, userKey, projectId) // FIXME: Unnecessary Get of snapshot
+	if done {
 		return true
 	}
 
 	var treeToUpdate map[string]map[string]string
-	if err := json.NewDecoder(r.Body).Decode(&treeToUpdate); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, `Could not decode the request`)
+	if err := json.NewDecoder(e.r.Body).Decode(&treeToUpdate); err != nil {
+		e.w.Header().Set("Content-type", "text/html; charset=utf-8")
+		e.w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(e.w, `Could not decode the request`)
 		return true
 	}
 
-	err := datastore.RunInTransaction(ctx, func(ctx appengine.Context) error {
+	err := datastore.RunInTransaction(e.ctx, func(ctx appengine.Context) error {
 		for stringId, node := range treeToUpdate {
 			id, err := strconv.ParseInt(stringId, 10, 64)
 			if err != nil {
@@ -554,9 +529,8 @@ func updateDocuments(projectId string, w http.ResponseWriter, r *http.Request) b
 
 			nodeKey := datastore.NewKey(ctx, "node", "", id, snapshotKey)
 			if node == nil {
-				// may already be deleted, so we don't care about the error
-				_ = datastore.Delete(ctx, nodeKey)
-				return nil
+				// will be / have been deleted by updateTree, so don't care here
+				continue
 			}
 
 			var nodeToUpdate Node
@@ -567,7 +541,11 @@ func updateDocuments(projectId string, w http.ResponseWriter, r *http.Request) b
 			for k, v := range node {
 				switch k {
 					case "text":
-						nodeToUpdate.Text = v
+						if !nodeToUpdate.Folder {
+							nodeToUpdate.Text = v
+						} else {
+							return errors.New("A folder cannot have a text property")
+						}
 					case "notes":
 						nodeToUpdate.Notes = v
 					case "synopsis":
@@ -586,8 +564,9 @@ func updateDocuments(projectId string, w http.ResponseWriter, r *http.Request) b
 	}, nil)
 
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, "Could not update documents")
+		e.w.Header().Set("Content-type", "text/html; charset=utf-8")
+		e.w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(e.w, "Could not update documents")
 		log.Println("Error updating documents", err)
 		return true
 	}
