@@ -6,7 +6,7 @@
             [scribe.js-util :refer [project-url json-parse]]
             [scribe.util :refer [find-parent item-before insert-after modify-when diff]]))
 
-(def update-delay 300000)
+(def update-delay 10000) ; time in ms between last edit and network save
 
 (register-handler :initialize
   (fn [db [_ tree & [content]]]
