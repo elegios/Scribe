@@ -35,6 +35,7 @@
 (register-handler :update-name
   (path [:current :tree])
   (fn [tree [_ id value]]
+    (dispatch [:poke-network])
     (assoc-in tree [id :name] value)))
 
 (register-handler :toggle-collapsed
@@ -51,6 +52,7 @@
   (fn [{{tree :tree} :current selected :selected-document :as db} [_ id]]
     (if (empty? (:children (tree id)))
       (let [parent (find-parent tree id)]
+        (dispatch [:poke-network])
         (-> db
             (update-in [:current :content] dissoc id)
             (update-in [:current :tree] dissoc id)
@@ -68,68 +70,71 @@
                     :pos {:x x :y y})))
 
 (register-handler :move-drag
-  (fn [{{:keys [start id]} :dragging
+  (fn [{{:keys [start id pos]} :dragging
         {tree :tree} :current
         :as db}
        [_ x y row column]]
-    (let [id (or id start)]
-      (try
-        ;; This function takes a curr-id and creates a list with one entry for each
-        ;; element in the tree with curr-id at the root. Each element is a list of
-        ;; valid locations for drag'n'drop dropping. If the element is truthy that
-        ;; column is valid, and the element will describe where the drop-point will
-        ;; put the dropped thing. Such a list will never have trailing nils, i.e.
-        ;; if no other column matches, take the last.
-        ;; id -> same parent as id, after id
-        ;; '(id) -> as first child of id
-        (letfn [(trans [curr-id]
-                  (let [curr (let [children (:children (tree curr-id))
-                                   filtered-children (remove #(= % id) children)]
-                               (cond
-                                 (not children) (list curr-id)
-                                 (empty? filtered-children) (list curr-id (list curr-id))
-                                 :otherwise (list nil (list curr-id))))
-                        children (sequence (comp (remove #(= % id))
-                                                 (mapcat trans))
-                                           (:children (tree curr-id)))
-                        last-index (dec (count children))]
-                    (cons curr
-                          (map-indexed #(conj %2 (when (and (= %1 last-index)
-                                                            (not= curr-id (:root tree)))
-                                                    curr-id))
-                                       children))))]
-          (let [positions    (trans (:root tree))
-                position     (or (nth positions row nil)
-                                 (last positions))
-                insert-point (or (some identity (nthrest position column))
-                                 (last position))
-                prev-parent (find-parent tree id)
-                prev-point (if (= id (first (:children (tree prev-parent))))
-                             (list prev-parent)
-                             (item-before (:children (tree prev-parent)) id))]
-            ; sanity check
-            (when (or (nil? insert-point)
-                      (and (not (list? insert-point))
-                           (not (find-parent tree insert-point))))
-               (throw (js/Error. (str "Failure in dragging, invalid insert-point: " insert-point))))
-            (-> db
-                (assoc-in [:dragging :pos] {:x x :y y})
-                (modify-when start
-                  update :dragging assoc :id start :start nil)
-                (modify-when (not= prev-point insert-point)
-                  update-in [:current :tree]
-                    #(let [removed (update-in % [prev-parent :children]
-                                                (partial into [] (remove (partial = id))))]
-                       (if (list? insert-point)
-                         (update-in removed
-                                    [(first insert-point) :children]
-                                    (partial into [id]))
-                         (update-in removed
-                                    [(find-parent tree insert-point) :children]
-                                    insert-after insert-point id)))))))
-       (catch js/Error e
-         (println e)
-         db)))))
+    (if (and (= x (:x pos)) (= y (:y pos)))
+      db
+      (let [id (or id start)]
+        (try
+          ;; This function takes a curr-id and creates a list with one entry for each
+          ;; element in the tree with curr-id at the root. Each element is a list of
+          ;; valid locations for drag'n'drop dropping. If the element is truthy that
+          ;; column is valid, and the element will describe where the drop-point will
+          ;; put the dropped thing. Such a list will never have trailing nils, i.e.
+          ;; if no other column matches, take the last.
+          ;; id -> same parent as id, after id
+          ;; '(id) -> as first child of id
+          (letfn [(trans [curr-id]
+                    (let [curr (let [children (:children (tree curr-id))
+                                     filtered-children (remove #(= % id) children)]
+                                 (cond
+                                   (not children) (list curr-id)
+                                   (empty? filtered-children) (list curr-id (list curr-id))
+                                   :otherwise (list nil (list curr-id))))
+                          children (sequence (comp (remove #(= % id))
+                                                   (mapcat trans))
+                                             (:children (tree curr-id)))
+                          last-index (dec (count children))]
+                      (cons curr
+                            (map-indexed #(conj %2 (when (and (= %1 last-index)
+                                                              (not= curr-id (:root tree)))
+                                                      curr-id))
+                                         children))))]
+            (let [positions    (trans (:root tree))
+                  position     (or (nth positions row nil)
+                                   (last positions))
+                  insert-point (or (some identity (nthrest position column))
+                                   (last position))
+                  prev-parent (find-parent tree id)
+                  prev-point (if (= id (first (:children (tree prev-parent))))
+                               (list prev-parent)
+                               (item-before (:children (tree prev-parent)) id))]
+              ; sanity check
+              (when (or (nil? insert-point)
+                        (and (not (list? insert-point))
+                             (not (find-parent tree insert-point))))
+                 (throw (js/Error. (str "Failure in dragging, invalid insert-point: " insert-point))))
+              (dispatch [:poke-network])
+              (-> db
+                  (assoc-in [:dragging :pos] {:x x :y y})
+                  (modify-when start
+                    update :dragging assoc :id start :start nil)
+                  (modify-when (not= prev-point insert-point)
+                    update-in [:current :tree]
+                      #(let [removed (update-in % [prev-parent :children]
+                                                  (partial into [] (remove (partial = id))))]
+                         (if (list? insert-point)
+                           (update-in removed
+                                      [(first insert-point) :children]
+                                      (partial into [id]))
+                           (update-in removed
+                                      [(find-parent tree insert-point) :children]
+                                      insert-after insert-point id)))))))
+         (catch js/Error e
+           (println e)
+           db))))))
 
 (register-handler :end-drag
   (path [:dragging])

@@ -26,8 +26,8 @@
           (fn [event]
             (let [x (+ (.-clientX event) off-x)
                   y (+ (.-clientY event) off-y)
-                  top (.-offsetTop (aget (.getElementsByClassName js/document "inner") 0))
-                  left (.-offsetLeft (aget (.getElementsByClassName js/document "inner") 0))
+                  top (.-offsetTop (aget (.getElementsByClassName js/document "tree") 0))
+                  left (.-offsetLeft (aget (.getElementsByClassName js/document "tree") 0))
                   row (max 0
                            (dec (quot (+ (- y top)
                                          (/ item-height 2))
