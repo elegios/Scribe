@@ -244,8 +244,8 @@
 (register-handler :document-created
   (fn [db [_ parent type id]]
     (let [tree-entity (case type
-                        :folder {:name "New folder" :children []}
-                        :file {:name "New file"})
+                        :folder {:name "" :children []}
+                        :file {:name ""})
           content-entity (case type
                            :folder {:notes "" :synopsis ""}
                            :file {:notes "" :synopsis "" :text ""})]
