@@ -66,7 +66,10 @@
         [:span
          {:class (cx (when selected? "selected"))
           :on-click #(dispatch [:select-document id])}
-         name]]
+         (cond
+           (not= name "") name
+           children "Untitled Folder"
+           :otherwise "Untitled File")]]
        (when-not collapsed
          (for [child-id children]
            ^{:key child-id} [tree-node child-id]))])))
