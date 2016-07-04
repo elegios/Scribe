@@ -527,7 +527,7 @@ input:disabled {
   align-items: center;
 }
 
-.text,.title {
+.text,.title,.word-count {
   width: 100%;
   max-width: 600px;
   left: auto;
@@ -537,6 +537,11 @@ input:disabled {
 .text {
   flex: 1;
   margin-top: 10px;
+}
+
+.word-count {
+  margin-top: 10px;
+  text-align: right;
 }
 
 .right-side {

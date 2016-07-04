@@ -9,6 +9,12 @@
     <div id="app">
     </div>
     <script type="text/javascript">
+      function countWords(text) {
+        var c = 0
+        text.replace(/\S+/g, function() { c++ })
+        return c
+      }
+
       var StartingTree = {
         root: 0,
         0: {

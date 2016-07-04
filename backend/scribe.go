@@ -200,7 +200,7 @@ func projectTop(e env, projectId string) bool {
 	treeToSend["root"] = snapshot.Top
 
 	fmt.Fprintf(e.w, `<html><head><link rel="stylesheet" type="text/css" href="static/site.css" /></head><body>`)
-	fmt.Fprintf(e.w, `<script type="text/javascript">var StartingContent=null;var StartingTree=`)
+	fmt.Fprintf(e.w, `<script type="text/javascript">var StartingContent=null;function countWords(t){var c=0;t.replace(/\S+/g,function(){c++});return c};var StartingTree=`)
 	if err := json.NewEncoder(e.w).Encode(treeToSend); err != nil {
 		e.w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(e.w, "Could not generate json from the tree")

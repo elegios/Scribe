@@ -108,6 +108,10 @@
       :value content
       :disabled (not content)}]))
 
+(defn word-count []
+  (with-subs [count [:word-count]]
+    [:div.word-count (str "Words: " count)]))
+
 (defn middle []
   (with-subs [selected-id [:selected-id]
               name [:selected-node :name]]
@@ -116,7 +120,8 @@
                     :value name
                     :on-change #(dispatch [:update-name selected-id
                                                         (-> % .-target .-value)])}]
-     [edit-field :text]]))
+     [edit-field :text]
+     [word-count]]))
 
 (defn right []
   (with-subs [possibly-need-update [:network :possibly-need-update]

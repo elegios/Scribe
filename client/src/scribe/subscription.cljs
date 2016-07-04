@@ -6,6 +6,10 @@
   (fn [db _]
     (reaction (get-in @db [:current :content]))))
 
+(register-sub :word-count
+  (fn [db _]
+    (reaction (get-in @db [:word-count :count]))))
+
 (register-sub :tree
   (fn [db [_ & [id]]]
     (if id

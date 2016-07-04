@@ -7,6 +7,7 @@
             [scribe.util :refer [find-parent item-before insert-after modify-when diff]]))
 
 (def update-delay 10000) ; time in ms between last edit and network save
+(def word-count-delay 2000) ; time in ms between last edit and word count update
 
 (register-handler :initialize
   (fn [db [_ tree & [content]]]
@@ -19,6 +20,8 @@
        :network {:possibly-need-update false
                  :sending false
                  :timer nil}
+       :word-count {:count 0
+                    :timer nil}
        :dragging {:id nil
                   :start nil
                   :pos nil}})))
@@ -30,6 +33,7 @@
   (path [:current :content])
   (fn [content [_ id type value]]
     (dispatch [:poke-network])
+    (dispatch [:poke-word-count])
     (assoc-in content [id type] value)))
 
 (register-handler :update-name
@@ -46,6 +50,7 @@
 (register-handler :select-document
   (path [:selected-document])
   (fn [_ [_ id]]
+    (dispatch [:word-count])
     id))
 
 (register-handler :delete-document
@@ -53,6 +58,8 @@
     (if (empty? (:children (tree id)))
       (let [parent (find-parent tree id)]
         (dispatch [:poke-network])
+        (when (= selected id)
+          (dispatch [:word-count]))
         (-> db
             (update-in [:current :content] dissoc id)
             (update-in [:current :tree] dissoc id)
@@ -185,7 +192,7 @@
     (if sending
       ; do nothing if sending
       (assoc-in db [:network :timer] nil)
-     
+
       ; otherwise, start async requests and set sending
       (do
         (go
@@ -253,8 +260,27 @@
 
 (register-handler :document-fetched
   (fn [db [_ id content]]
+    (when (= (:selected-document db) id)
+      (dispatch [:word-count]))
     (-> db
         (assoc-in [:current :content id] content)
         (assoc-in [:last-sent :content id] content))))
+
+; word count events (private)
+; ===========================
+
+(register-handler :poke-word-count
+  (path [:word-count])
+  (fn [{:keys [timer] :as word-count} _]
+    (when timer
+      (js/clearTimeout timer))
+    (assoc word-count :timer (js/setTimeout #(dispatch [:word-count]) word-count-delay))))
+
+(register-handler :word-count
+  (fn [db _]
+    (let [id (:selected-document db)
+          text (get-in db [:current :content id :text])
+          count (if text (js/countWords text) 0)]
+      (assoc db :word-count {:timer nil :count count}))))
 
 ;
