@@ -94,15 +94,14 @@
           ;; id -> same parent as id, after id
           ;; '(id) -> as first child of id
           (letfn [(trans [curr-id]
-                    (let [curr (let [children (:children (tree curr-id))
-                                     filtered-children (remove #(= % id) children)]
-                                 (cond
-                                   (not children) (list curr-id)
-                                   (empty? filtered-children) (list curr-id (list curr-id))
-                                   :otherwise (list nil (list curr-id))))
-                          children (sequence (comp (remove #(= % id))
-                                                   (mapcat trans))
-                                             (:children (tree curr-id)))
+                    (let [{:keys [collapsed children]} (tree curr-id)
+                          children (if collapsed nil children)
+                          filtered-children (remove #(= % id) children)
+                          curr (cond
+                                 (not children) (list curr-id)
+                                 (empty? filtered-children) (list curr-id (list curr-id))
+                                 :otherwise (list nil (list curr-id)))
+                          children (sequence (mapcat trans) filtered-children)
                           last-index (dec (count children))]
                       (cons curr
                             (map-indexed #(conj %2 (when (and (= %1 last-index)
