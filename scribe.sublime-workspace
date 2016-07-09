@@ -1,0 +1,412 @@
+{
+	"auto_complete":
+	{
+		"selected_items":
+		[
+			[
+				"scroll",
+				"scroll_horizontal"
+			],
+			[
+				"sublime",
+				"sublime_plugin"
+			],
+			[
+				"CLASS",
+				"CLASS_PUNCTUATION_END"
+			],
+			[
+				"CLASS_PUN",
+				"CLASS_PUNCTUATION_START"
+			],
+			[
+				"sel",
+				"self"
+			],
+			[
+				"indent",
+				"indent_object"
+			],
+			[
+				"match",
+				"match_selector"
+			],
+			[
+				"CLASS_SUB",
+				"CLASS_SUB_WORD_START"
+			],
+			[
+				"find",
+				"find_by_class"
+			],
+			[
+				"sublim",
+				"sublime_plugin"
+			],
+			[
+				"set_",
+				"set_view_index"
+			]
+		]
+	},
+	"buffers":
+	[
+	],
+	"build_system": "",
+	"build_system_choices":
+	[
+	],
+	"build_varint": "",
+	"command_palette":
+	{
+		"height": 227.0,
+		"last_filter": "spaces",
+		"selected_items":
+		[
+			[
+				"spaces",
+				"Indentation: Convert to Spaces"
+			],
+			[
+				"install",
+				"Package Control: Install Package"
+			],
+			[
+				"list",
+				"Package Control: List Packages"
+			]
+		],
+		"width": 442.0
+	},
+	"console":
+	{
+		"height": 126.0,
+		"history":
+		[
+			"sublime.log_commands(True)",
+			"view.log_commands(True)",
+			"sublime.log_commands(True);",
+			"sublime.log_commands(False)",
+			"sublime.log_input(False)",
+			"sublime.log_input(True)",
+			"sublime.log_commands(True)",
+			"sublime.log_commands()",
+			"view.size()",
+			"view.text_point(477, 0)",
+			"view.text_point(475, 0)",
+			"view.text_point(474, 0)",
+			"view.run_command('expand_selection', {\"to\":\"brackets\"})",
+			"view.run_command('kak_paste', {\"all\": True})",
+			"view.run_command('kak_paste', {\"all\": true})",
+			"import urllib.request,os,hashlib; h = '2915d1851351e5ee549c20394736b442' + '8bc59f460fa1548d1514676163dafc88'; pf = 'Package Control.sublime-package'; ipp = sublime.installed_packages_path(); urllib.request.install_opener( urllib.request.build_opener( urllib.request.ProxyHandler()) ); by = urllib.request.urlopen( 'http://packagecontrol.io/' + pf.replace(' ', '%20')).read(); dh = hashlib.sha256(by).hexdigest(); print('Error validating download (got %s instead of %s), please try manual install' % (dh, h)) if dh != h else open(os.path.join( ipp, pf), 'wb' ).write(by)",
+			"window.run_command('single_pane')",
+			"window.run_command(\"switch_pane\")",
+			"window.get_layout()",
+			"window.set_layout()",
+			"view.run_command(\"kak_fix_selection\")",
+			"view.run_command(\"move_to\", {\"to\": \"bol\"})",
+			"view.run_command(\"move_to\", {\"to\", \"bol\"})",
+			"view.classify(view.sel()[0].a)",
+			"view.classify(view.sel()[0].a) & sublime.CLASS_EMPTY_LINE",
+			"view.classify(view.sel()[0].b) & sublime.CLASS_WORD_START",
+			"view.classify(view.sel()[0].b) & sublime.CLASS_LINE_END",
+			"view.classify(view.sel()[0].b)",
+			"view.classify(view.sel()[0].b) & sublime.CLASS_LINE_START",
+			"view.classify(view.sel()[0].b) & sublime.CLASS_EMPTY_LINE",
+			"view.classify(view.sel()[0].b) & CLASS_EMPTY_LINE",
+			"view.classify(view.sel()[0].b)",
+			"view.sel()[0]",
+			"view.sel()",
+			"view.run_command(\"run_macro_file\", {\"file\": \"res://Packages/Kak/Add Line.sublime-macro\"})",
+			"view.run_command('search_in_selection', {\"incremental\": True})",
+			"sublime.log_commands(True)",
+			"view.run_command('search_in_selection', {\"incremental\": True})",
+			"view.run_command('search_in_selection', {\"incremental\": False})",
+			"view.run_command('search_in_selection', {\"incremental\", False})",
+			"view.run_command('search_in_selection')",
+			"view.run_command('toggle_in_selection')",
+			"view.run_command('kak_command_mode')",
+			"view.run_command('kak_insert_mode')",
+			"view.run_command('kak_command_mode')",
+			"view.run_command('kak_insert_mode')",
+			"sublime.log_commands(False)",
+			"sublime.log_input(False)",
+			"sublime.log_input(True)",
+			"sublime.log_commands(True)",
+			"view.run_command('toggle_overwrite')",
+			"view.run_command('select_lines', {\"forward\": True})",
+			"view.run_command('kak_move', {\"by\": \"subwords\", \"forward\": True, \"extend\": False})",
+			"view.settings().set(\"inverse_caret_state\", True)",
+			"view.run_command('move', {\"by\": \"stops\"})",
+			"view.settings().set(\"inverse_caret_state\", False)",
+			"view.run_command('move', {\"by\": \"stops\"})",
+			"view.run_command('kak_move', {\"by\": \"words\", \"forward\": True, \"extend\": True})",
+			"view.run_command('kak_move', {\"by\": \"words\", \"forward\": False, \"extend\": False})",
+			"view.run_command('kak_move', {\"by\": \"words\", \"forward\": True, \"extend\": False})",
+			"view.run_command('kak_move', {\"by\": \"words\", \"forward\": False, \"extend\": False})",
+			"view.sel()[0].b",
+			"view.sel().add(view.find_by_class(view.sel()[0].b, True, sublime.CLASS_WORD_END))",
+			"view.find_by_class(view.sel()[0].b, True, sublime.CLASS_WORD_END)",
+			"view.run_command('kak_move', {\"by\": \"lines\", \"forward\": False, \"extend\": False})",
+			"view.run_command('kak_move', {\"by\": \"characters\", \"forward\": True, \"extend\": False})",
+			"view.run_command('kak_move', {\"by\": \"characters\", \"forward\": True, \"extend\": True})",
+			"view.run_command('kak_move', {\"by\": \"lines\", \"forward\": True, \"extend\": True})",
+			"view.run_command('kak_move', {\"by\": \"lines\", \"forward\": False, \"extend\": True})",
+			"view.run_command('kak_move', {\"by\": \"characters\", \"forward\": True, \"extend\": False})",
+			"view.run_command('kak_move', {\"by\": \"characters\", \"forward\": False, \"extend\": False})",
+			"view.run_command('kak_move', {\"by\": \"lines\", \"forward\": False, \"extend\": False})",
+			"view.run_command('kak_move', {\"by\": \"characters\", \"forward\": False, \"extend\": False})",
+			"view.run_command('kak_move', {\"by\": \"characters\", \"forward\": True, \"extend\": False})",
+			"view.run_command('kak_move', {\"by\": \"characters\", \"forward\": True, \"extend\": True})",
+			"view.run_command('kak_move', {\"by\": \"characters\", \"forward\": False, \"extend\": True})",
+			"view.run_command('kak_move', {\"by\": \"lines\", \"forward\": False, \"extend\": True})",
+			"view.run_command('kak_move', {\"by\": \"characters\", \"forward\": False, \"extend\": True})",
+			"view.run_command('kak_move', {\"by\": \"characters\", \"forward\": True, \"extend\": True})",
+			"view.run_command('kak_move', {\"by\": \"characters\", \"forward\": False, \"extend\": True})",
+			"view.run_command('kak_move', {\"by\": \"characters\", \"forward\": True, \"extend\": True})",
+			"view.run_command('kak_move', {\"by\": \"characters\", \"forward\": True})",
+			"view.run_command('kak_move', {\"by\": \"characters\", \"forward\": False})",
+			"view.run_command('kak_move', {\"by\": \"lines\", \"forward\": False})",
+			"view.settings().set(\"inverse_caret_state\", True)",
+			"view.run_command('kak_move', {\"by\": \"lines\", \"forward\": False})",
+			"view.run_command('kak_move', {\"by\": \"lines\"})",
+			"view.run_command('kak_move', {\"forward\": False})",
+			"view.run_command('kak_move', {\"forward\": True})",
+			"view.run_command('kak_move', {forward: True})",
+			"view.run_command('kak_move', {forward = True})",
+			"view.run_command('kak_move', forward=True)",
+			"view.run_command('kak_move')",
+			"dir(sublime.Region(1,2))",
+			"sublime.Region(1,2)",
+			"Region(1,2)",
+			"view.run_command('move_right')",
+			"dir(view)",
+			"dir(view.sel())",
+			"for r in view.sel(): print(r)",
+			"for r in view.sel(): print(r);",
+			"for r in view.sel():",
+			"for r in view.sel(): print(r);",
+			"for r in view.sel(): print(r)",
+			"dir(view.sel())",
+			"type(view.sel())",
+			"typeof(view.sel())",
+			"view.sel()[0]",
+			"view.sel()"
+		]
+	},
+	"distraction_free":
+	{
+		"menu_visible": true,
+		"show_minimap": false,
+		"show_open_files": false,
+		"show_tabs": false,
+		"side_bar_visible": false,
+		"status_bar_visible": false
+	},
+	"expanded_folders":
+	[
+		"/Users/elegios/Projects/scribe"
+	],
+	"file_history":
+	[
+		"/Users/elegios/Library/Application Support/Sublime Text 3/Packages/Kak/Default.sublime-keymap",
+		"/Users/elegios/Library/Application Support/Sublime Text 3/Packages/User/Preferences.sublime-settings",
+		"/Users/elegios/Library/Application Support/Sublime Text 3/Packages/OmniSharp/Default.sublime-keymap",
+		"/Users/elegios/Library/Application Support/Sublime Text 3/Packages/User/Default (OSX).sublime-keymap",
+		"/Users/elegios/Library/Application Support/Sublime Text 3/Packages/Kak/kakoune.py",
+		"/Users/elegios/Library/Application Support/Sublime Text 3/Packages/User/layout.py",
+		"/Users/elegios/Library/Application Support/Sublime Text 3/Packages/Default/Default (OSX).sublime-keymap",
+		"/Users/elegios/Library/Application Support/Sublime Text 3/Packages/Default/Preferences.sublime-settings",
+		"/Users/elegios/Library/Application Support/Sublime Text 3/Packages/Kak/Add Line.sublime-macro",
+		"/Users/elegios/Library/Application Support/Sublime Text 3/Packages/User/kakoune.py"
+	],
+	"find":
+	{
+		"height": 23.0
+	},
+	"find_in_files":
+	{
+		"height": 0.0,
+		"where_history":
+		[
+		]
+	},
+	"find_state":
+	{
+		"case_sensitive": false,
+		"find_history":
+		[
+			"view",
+			"select",
+			"view",
+			"find_next",
+			"update_",
+			"paste",
+			"find_next",
+			"super+d",
+			"ctrl+d",
+			"find",
+			"argument",
+			"pass",
+			"single",
+			"next",
+			"down",
+			"complet",
+			"indent",
+			"change",
+			"Insert",
+			"selection",
+			"close",
+			"minimap",
+			"Insert",
+			"fold",
+			"commit_on",
+			"content",
+			"match_content",
+			"delet",
+			"command_mode",
+			"find",
+			"set",
+			"self",
+			"ctrl+t"
+		],
+		"highlight": true,
+		"in_selection": false,
+		"preserve_case": false,
+		"regex": false,
+		"replace_history":
+		[
+		],
+		"reverse": false,
+		"show_context": true,
+		"use_buffer2": true,
+		"whole_word": false,
+		"wrap": true
+	},
+	"groups":
+	[
+		{
+			"sheets":
+			[
+			]
+		}
+	],
+	"incremental_find":
+	{
+		"height": 34.0
+	},
+	"input":
+	{
+		"height": 31.0
+	},
+	"layout":
+	{
+		"cells":
+		[
+			[
+				0,
+				0,
+				1,
+				1
+			]
+		],
+		"cols":
+		[
+			0.0,
+			1.0
+		],
+		"rows":
+		[
+			0.0,
+			1.0
+		]
+	},
+	"menu_visible": true,
+	"output.find_results":
+	{
+		"height": 0.0
+	},
+	"pinned_build_system": "",
+	"project": "scribe.sublime-project",
+	"replace":
+	{
+		"height": 42.0
+	},
+	"save_all_on_build": true,
+	"select_file":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+			[
+				"kak",
+				"Kak/kakoune.py"
+			],
+			[
+				"default",
+				"~/Library/Application Support/Sublime Text 3/Packages/Kak/Default.sublime-keymap"
+			],
+			[
+				"defa",
+				"Kak/Default.sublime-keymap"
+			],
+			[
+				"kakou",
+				"Kak/kakoune.py"
+			],
+			[
+				"lay",
+				"User/layout.py"
+			],
+			[
+				"efault",
+				"~/Library/Application Support/Sublime Text 3/Packages/Default/Default (OSX).sublime-keymap"
+			],
+			[
+				"def",
+				"User/Default (OSX).sublime-keymap"
+			],
+			[
+				"",
+				"Kak/Default.sublime-keymap"
+			],
+			[
+				"layout",
+				"~/Library/Application Support/Sublime Text 3/Packages/User/layout.py"
+			]
+		],
+		"width": 0.0
+	},
+	"select_project":
+	{
+		"height": 500.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 380.0
+	},
+	"select_symbol":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"selected_group": 0,
+	"settings":
+	{
+	},
+	"show_minimap": false,
+	"show_open_files": false,
+	"show_tabs": false,
+	"side_bar_visible": true,
+	"side_bar_width": 150.0,
+	"status_bar_visible": true,
+	"template_settings":
+	{
+	}
+}
