@@ -1,17 +1,19 @@
 package scribe
 
 import (
+	"archive/zip"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"regexp"
-	"log"
-	"encoding/json"
 	"strconv"
-	"errors"
 
 	"appengine"
-	"appengine/user"
 	"appengine/datastore"
+	"appengine/user"
 )
 
 var (
@@ -23,8 +25,8 @@ func init() {
 }
 
 type env struct {
-	w http.ResponseWriter
-	r *http.Request
+	w   http.ResponseWriter
+	r   *http.Request
 	ctx appengine.Context
 }
 
@@ -34,24 +36,24 @@ type ProjectTop struct {
 
 type Snapshot struct {
 	Previous int64
-	Top int64
-	Nodes []int64
+	Top      int64
+	Nodes    []int64
 }
 
 type Node struct {
-	Name string
-	Children []int64
+	Name      string
+	Children  []int64
 	Collapsed bool
-	Folder bool
-	Text string `datastore:",noindex"`
-	Notes string `datastore:",noindex"`
-	Synopsis string `datastore:",noindex"`
+	Folder    bool
+	Text      string `datastore:",noindex"`
+	Notes     string `datastore:",noindex"`
+	Synopsis  string `datastore:",noindex"`
 }
 
 /**
 * Convention: return second value, bool, true iff we should just return
 *             because the request has now been taken care of in its entirety
-*/
+ */
 
 func getUser(e env) (*datastore.Key, bool) {
 	u := user.Current(e.ctx)
@@ -88,9 +90,9 @@ func getLastSnapshot(e env, userKey *datastore.Key, projectId string) (*Snapshot
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
-	e := env {
-		w: w,
-		r: r,
+	e := env{
+		w:   w,
+		r:   r,
 		ctx: appengine.NewContext(r),
 	}
 	matches := pathRegex.FindStringSubmatch(r.URL.Path)
@@ -107,12 +109,12 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-  if r.Method == "GET" && r.URL.Path == "/" {
-    rootHandler(e);
-    return
-  }
+	if r.Method == "GET" && r.URL.Path == "/" {
+		rootHandler(e)
+		return
+	}
 
-	http.NotFound(w, r);
+	http.NotFound(w, r)
 }
 
 func rootHandler(e env) {
@@ -152,6 +154,9 @@ func getHandler(e env, matches []string) bool {
 
 	case "document":
 		return getDocument(e, matches[1])
+
+	case "zip":
+		return getZip(e, matches[1])
 	}
 
 	return false
@@ -210,7 +215,7 @@ func projectTop(e env, projectId string) bool {
 	fmt.Fprintf(e.w, `</script><div id="app"></div><script type="text/javascript" src="static/client.js"></script>`)
 	fmt.Fprintf(e.w, `<script type="text/javascript">window.onload=function(){scribe.core.run()}</script>`)
 	fmt.Fprintf(e.w, `</body></html>`)
-	return true;
+	return true
 }
 
 func getDocument(e env, projectId string) bool {
@@ -237,8 +242,8 @@ func getDocument(e env, projectId string) bool {
 		return true
 	}
 
-	treeToSend := map[string]string {
-		"notes": node.Notes,
+	treeToSend := map[string]string{
+		"notes":    node.Notes,
 		"synopsis": node.Synopsis,
 	}
 	if !node.Folder {
@@ -253,7 +258,79 @@ func getDocument(e env, projectId string) bool {
 		return true
 	}
 
-	e.w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	e.w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	return true
+}
+
+func addZipFile(e env, w *zip.Writer, path string, id int64, snapshotKey *datastore.Key) bool {
+	var node Node
+	if err := datastore.Get(e.ctx, datastore.NewKey(e.ctx, "node", "", id, snapshotKey), &node); err != nil {
+		e.w.Header().Set("Content-type", "text/html; charset=utf-8")
+		e.w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintf(e.w, `Could not find one of the documents`)
+		log.Println("Error loading node", err)
+		return true
+	}
+
+	if node.Folder {
+		path += node.Name + "/"
+		for _, id := range node.Children {
+			done := addZipFile(e, w, path, id, snapshotKey)
+			if done {
+				return true
+			}
+		}
+	} else {
+		w, err := w.Create(path + node.Name + ".txt")
+		if err != nil {
+			e.w.Header().Set("Content-type", "text/html; charset=utf-8")
+			e.w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(e.w, `Could not create a file in the zip file`)
+			log.Println("Error creating zip file", err)
+			return true
+		}
+		_, err = io.WriteString(w, node.Text)
+		if err != nil {
+			e.w.Header().Set("Content-type", "text/html; charset=utf-8")
+			e.w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(e.w, `Could not write a file in the zip file`)
+			log.Println("Error writing zip file", err)
+			return true
+		}
+	}
+
+	return false
+}
+
+func getZip(e env, projectId string) bool {
+	userKey, done := getUser(e)
+	if done {
+		return true
+	}
+
+	snapshot, snapshotKey, done := getLastSnapshot(e, userKey, projectId)
+	if done {
+		return true
+	}
+
+	e.w.Header().Set("Content-Type", "application/zip")
+	e.w.Header().Set("Content-Disposition", "inline; filename=" + projectId+".zip")
+
+	w := zip.NewWriter(e.w)
+	done = addZipFile(e, w, "", snapshot.Top, snapshotKey)
+	if done {
+		return true
+	}
+
+	err := w.Close()
+	if err != nil {
+		e.w.Header().Set("Content-type", "text/html; charset=utf-8")
+		e.w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(e.w, `Could not wrap up the zip file`)
+		log.Println("Error finishing zip file", err)
+		return true
+	}
+
 	return true
 }
 
@@ -287,28 +364,28 @@ func createProject(e env, projectId string) bool {
 		e.w.Header().Set("Content-type", "text/html; charset=utf-8")
 		e.w.WriteHeader(http.StatusConflict)
 		fmt.Fprintf(e.w, `There is already a project with that id.`)
-		return true;
+		return true
 	}
 
 	err := datastore.RunInTransaction(e.ctx, func(ctx appengine.Context) error {
-		snapshot := Snapshot {
+		snapshot := Snapshot{
 			Previous: 0,
-			Top: 0,
-			Nodes: nil,
+			Top:      0,
+			Nodes:    nil,
 		}
 		snapshotKey, err := datastore.Put(ctx, datastore.NewIncompleteKey(ctx, "snapshot", userKey), &snapshot)
 		if err != nil {
 			return err
 		}
 
-		rootNode := Node {
-			Name: projectId,
-			Children: nil,
+		rootNode := Node{
+			Name:      projectId,
+			Children:  nil,
 			Collapsed: false,
-			Folder: true,
-			Text: "",
-			Notes: "",
-			Synopsis: "",
+			Folder:    true,
+			Text:      "",
+			Notes:     "",
+			Synopsis:  "",
 		}
 		rootKey, err := datastore.Put(ctx, datastore.NewIncompleteKey(ctx, "node", snapshotKey), &rootNode)
 		if err != nil {
@@ -340,7 +417,7 @@ func createProject(e env, projectId string) bool {
 	}
 
 	http.Redirect(e.w, e.r, fmt.Sprintf("/%s", projectId), http.StatusSeeOther)
-	return true;
+	return true
 }
 
 func createDocument(e env, projectId string) bool {
@@ -357,7 +434,7 @@ func createDocument(e env, projectId string) bool {
 	var nodeKey *datastore.Key
 
 	err := datastore.RunInTransaction(e.ctx, func(ctx appengine.Context) error {
-		node := Node {
+		node := Node{
 			Folder: e.r.FormValue("folder") == "true",
 		}
 		var err error
@@ -405,7 +482,7 @@ func createDocument(e env, projectId string) bool {
 		log.Println("Could not make json out of id")
 	}
 
-	e.w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	e.w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	return true
 }
 
@@ -540,18 +617,18 @@ func updateDocuments(e env, projectId string) bool {
 
 			for k, v := range node {
 				switch k {
-					case "text":
-						if !nodeToUpdate.Folder {
-							nodeToUpdate.Text = v
-						} else {
-							return errors.New("A folder cannot have a text property")
-						}
-					case "notes":
-						nodeToUpdate.Notes = v
-					case "synopsis":
-						nodeToUpdate.Synopsis = v
-					default:
-						return errors.New("Unknown property")
+				case "text":
+					if !nodeToUpdate.Folder {
+						nodeToUpdate.Text = v
+					} else {
+						return errors.New("A folder cannot have a text property")
+					}
+				case "notes":
+					nodeToUpdate.Notes = v
+				case "synopsis":
+					nodeToUpdate.Synopsis = v
+				default:
+					return errors.New("Unknown property")
 				}
 			}
 
