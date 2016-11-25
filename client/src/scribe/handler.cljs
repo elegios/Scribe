@@ -3,7 +3,8 @@
   (:require [re-frame.core :refer [register-handler dispatch path]]
             [cljs.core.async :refer [<!]]
             [cljs-http.client :as http]
-            [scribe.js-util :refer [project-url json-parse]]
+            [clojure.string :as str]
+            [scribe.js-util :as js-util :refer [project-url json-parse]]
             [scribe.util :refer [find-parent item-before insert-after modify-when diff]]))
 
 (def update-delay 10000) ; time in ms between last edit and network save
@@ -148,6 +149,18 @@
   (fn [dragging _]
     (assoc dragging :start nil
                     :id nil)))
+
+(register-handler :export
+  (fn [db _]
+    (let [selected (:selected-document db)
+          text (get-in db [:current :content selected :text])]
+      (when text
+        (-> text
+            (str/replace #"\n+\*+\n+" "</p><hr /><p>")
+            (str/replace #"\n+" "</p><p>")
+            (#(str "<p>" % "</p>"))
+            js-util/copy)))
+    db))
 
 ; network events (public)
 ; =======================

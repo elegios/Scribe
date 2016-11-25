@@ -560,6 +560,10 @@ input:disabled {
   margin-bottom: 10px;
 }
 
+.export {
+  margin-bottom: 3px;
+}
+
 input.fail {
   color: crimson;
 }

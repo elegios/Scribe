@@ -1,5 +1,5 @@
 (ns scribe.view
-  (:require [re-frame.core :refer [dispatch]]
+  (:require [re-frame.core :refer [dispatch dispatch-sync]]
             [goog.events :as events]
             [clojure.string :as str]
             [scribe.util :refer-macros [with-subs]])
@@ -135,6 +135,10 @@
      [edit-field :synopsis]
      "Notes"
      [edit-field :notes]
+     [:input {:type "button"
+              :class "export"
+              :value "Ao3 Export to Clipboard"
+              :on-click #(dispatch-sync [:export])}]
      [:input {:type "button"
               :class (cx (when last-update-failed "fail"))
               :value (cond
