@@ -1,6 +1,6 @@
 (ns scribe.subscription
-  (:require-macros [reagent.ratom :refer [reaction]])
-  (:require [re-frame.core :refer [register-sub]]))
+  (:require [re-frame.core :refer [register-sub]]
+            [reagent.ratom :refer-macros [reaction]]))
 
 (register-sub :content
   (fn [db _]

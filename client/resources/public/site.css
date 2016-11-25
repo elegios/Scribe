@@ -560,3 +560,7 @@ input:disabled {
   margin-bottom: 10px;
 }
 
+input.fail {
+  color: crimson;
+}
+

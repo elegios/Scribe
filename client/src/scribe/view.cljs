@@ -1,8 +1,8 @@
 (ns scribe.view
-  (:require-macros [scribe.util :refer [with-subs]])
   (:require [re-frame.core :refer [dispatch]]
             [goog.events :as events]
-            [clojure.string :as str])
+            [clojure.string :as str]
+            [scribe.util :refer-macros [with-subs]])
   (:import [goog.events EventType]))
 
 (def indent-width 20)
@@ -128,6 +128,7 @@
 
 (defn right []
   (with-subs [possibly-need-update [:network :possibly-need-update]
+              last-update-failed [:network :last-update-failed]
               sending [:network :sending]]
     [:div.right-side
      "Synopsis"
@@ -135,7 +136,11 @@
      "Notes"
      [edit-field :notes]
      [:input {:type "button"
-              :value (if sending "Saving Changes..." "Save Changes")
+              :class (cx (when last-update-failed "fail"))
+              :value (cond
+                       sending "Saving Changes..."
+                       last-update-failed "! Save Changes !"
+                       :default "Save Changes")
               :disabled (or sending (not possibly-need-update))
               :on-click #(dispatch [:trigger-send])}]]))
 

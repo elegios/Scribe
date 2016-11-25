@@ -19,6 +19,7 @@
        :selected-document (:root tree)
        :network {:possibly-need-update false
                  :sending false
+                 :last-update-failed false
                  :timer nil}
        :word-count {:count 0
                     :timer nil}
@@ -238,8 +239,10 @@
   (fn [network [_ success]]
     (if success
       (assoc network :sending false
+                     :last-update-failed false
                      :possibly-need-update false)
-      (assoc network :sending false))))
+      (assoc network :sending false
+                     :last-update-failed true))))
 
 (register-handler :document-created
   (fn [db [_ parent type id]]
