@@ -13,7 +13,7 @@ lein with-profile prod cljsbuild once
 ```
 
 # Try local appengine
-Have appengine in PATH, then:
+Have appengine in PATH, then (this is what it used to be, should be something starting with `gcloud app` now, not sure exactly what):
 ```
 cd backend
 goapp serve # To test that things appear correct
@@ -22,5 +22,5 @@ goapp serve # To test that things appear correct
 # Push to server
 ```
 cd backend
-appcfg.py -A e-scribe update .
+gcloud app deploy
 ```
